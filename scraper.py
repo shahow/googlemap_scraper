@@ -24,6 +24,11 @@ def get_driver():
     options.add_argument("--lang=en") 
     options.add_argument("--start-maximized")
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+    options.set_capability(
+        "goog:loggingPrefs",
+        {"performance": "ALL"}
+    )
     
     service = ChromeService(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
@@ -146,6 +151,20 @@ def scrape_place(driver, url, original_query):
     logging.info(f"Scraping place URL: {url}")
     driver.get(url)
     time.sleep(3) # Wait for load
+
+    logs = driver.get_log("performance")
+
+    for entry in logs:
+        message = json.loads(entry["message"])["message"]
+
+        if message["method"] == "Network.responseReceived":
+            response = message["params"]["response"]
+
+            url = response["url"]
+
+            logging.info(
+                f"RESPONSE: {response['status']} {url}"
+            )
     
     wait = WebDriverWait(driver, 10)
     place_name = "Unknown"
@@ -157,7 +176,7 @@ def scrape_place(driver, url, original_query):
         pass
 
     driver.execute_script("window.scrollBy(0, 500);")
-    time.sleep(2)
+    time.sleep(3)
 
     elements = driver.find_elements(
         By.XPATH,
@@ -226,10 +245,10 @@ def main():
     try:
         driver = get_driver()
         
-        for query in queries:
+        for query in queries:  # Limit to first query for debugging
             urls = get_place_urls(driver, query)
             
-            for url in urls:
+            for url in urls[:1]:  # Limit to first 10 URLs for debugging
                 try:
                     data = scrape_place(driver, url, query)
                     if data:
@@ -253,7 +272,7 @@ def main():
     # Save Excel
     logging.info("Preparing Excel export...")
     flattened_data = []
-    
+
     for entry in all_results:
         q = entry.get("query")
         n = entry.get("name")
