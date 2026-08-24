@@ -1,3 +1,4 @@
+import os
 import time
 import json
 import logging
@@ -153,18 +154,57 @@ def scrape_place(driver, url, original_query):
     time.sleep(3) # Wait for load
 
     logs = driver.get_log("performance")
-
     for entry in logs:
-        message = json.loads(entry["message"])["message"]
+        try:
+            message = json.loads(entry["message"])["message"]
 
-        if message["method"] == "Network.responseReceived":
+            if message["method"] != "Network.responseReceived":
+                continue
+
             response = message["params"]["response"]
+            request_id = message["params"]["requestId"]
+            response_url = response["url"]
 
-            url = response["url"]
+            if "/maps/preview/place" not in response_url:
+                continue
 
             logging.info(
-                f"RESPONSE: {response['status']} {url}"
+                f"Found /maps/preview/place: "
+                f"{response.status} {response_url}"
             )
+
+            try:
+                result = driver.execute_cdp_cmd(
+                    "Network.getResponseBody",
+                    {"requestId": request_id}
+                )
+
+                body = result.get("body", "")
+
+ 
+                filename = os.path.join(
+                    "sponse_dir",
+                    f"{safe_name}.txt"
+                )
+
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write(body)
+
+                logging.info(
+                    f"Saved place response: {filename} "
+                    f"({len(body)} chars)"
+                )
+
+                response_index += 1
+
+            except Exception as e:
+                logging.warning(
+                    f"Could not get response body for "
+                    f"{response_url}: {e}"
+                )
+
+        except Exception as e:
+            logging.warning(f"Error processing performance log: {e}")
     
     wait = WebDriverWait(driver, 10)
     place_name = "Unknown"
@@ -214,6 +254,7 @@ def scrape_place(driver, url, original_query):
         f.write(driver.page_source)
 
     logging.info("========== END RAW BUSY DATA ==========")
+    #next step is parse driver.page_source get aria-labels with "busy" and extract the text content, then parse that into structured data.
     parsed_days = parse_popular_times(visible_data)
     
     structured_data = {}
@@ -248,7 +289,7 @@ def main():
         for query in queries:  # Limit to first query for debugging
             urls = get_place_urls(driver, query)
             
-            for url in urls[:1]:  # Limit to first 10 URLs for debugging
+            for url in urls[:3]:  # Limit to first 10 URLs for debugging
                 try:
                     data = scrape_place(driver, url, query)
                     if data:
