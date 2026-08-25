@@ -1,10 +1,13 @@
+from ast import Import
 import os
 import time
 import json
 import logging
 import traceback
 import re
+
 import pandas as pd
+import mymariadb as MariaDB
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -174,7 +177,8 @@ def scrape_place(driver, url, original_query):
 
             if message["method"] != "Network.responseReceived":
                 continue
-
+            
+            logging.info(f"Processing performance log: {message}")
             response = message["params"]["response"]
             request_id = message["params"]["requestId"]
             response_url = response["url"]
@@ -256,8 +260,8 @@ def scrape_place(driver, url, original_query):
 
     logging.info("========== RAW BUSY DATA ==========")
 
-    for i, item in enumerate(visible_data):
-        logging.info(f"[{i}] {item}")
+    #for i, item in enumerate(visible_data):
+    #    logging.info(f"[{i}] {item}")
 
     #html = driver.page_source
     safe_name = re.sub(r'[\\/*?:"<>|]', "_", place_name)
@@ -266,22 +270,25 @@ def scrape_place(driver, url, original_query):
         f.write(driver.page_source)
 
     logging.info("========== END RAW BUSY DATA ==========")
-    #next step is parse driver.page_source get aria-labels with "busy" and extract the text content, then parse that into structured data.
-    print("visible_data: " + str(driver.page_source))
-    #parsed_days = parse_popular_times_v2(driver.page_source,f"./{safe_name}.txt")
     elements = driver.find_elements(
     By.CSS_SELECTOR,
     "div[role='img']"
 )
+    conn = MariaDB.getConn()
+    cursor = conn.cursor()
     print(elements)
     for a in elements:
         print(a.get_attribute("aria-label"))
-        aria = a.get_attribute("aria-label")
-        if aria and "繁忙程度" in aria:
-            print(a.get_attribute("outerHTML"))
-            print("PARENT:")
-            print(a.find_element(By.XPATH, "..").get_attribute("outerHTML"))
-        break
+        text = a.get_attribute("aria-label")
+        m = re.search(r'(\d+)時的繁忙程度通常為\s*(\d+)%', text)
+
+        if m:
+            hour, busy = m.groups()
+            #print(hour)  # 5
+            #print(busy)  # 0
+    cursor.close()
+    conn.close()
+
     """
     
     
