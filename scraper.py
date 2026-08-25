@@ -5,6 +5,7 @@ import logging
 import traceback
 import re
 import pandas as pd
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,6 +35,19 @@ def get_driver():
     service = ChromeService(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
     return driver
+def parse_popular_times_v2(htmltext,filename):
+    elements = driver.find_elements(
+    By.CSS_SELECTOR,
+    "div[role='img']"
+    )
+    soup = BeautifulSoup(htmltext, "html.parser")
+    #divs_with_labels = soup.select('div[aria-label]')
+    div_tags = soup.find_all("div", role_="img")
+    img_tags = soup.select('div.entry-content img')
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(str(img_tags))
+    print(len(img_tags))
+    return None
 
 def parse_popular_times(flat_data):
     """
@@ -223,8 +237,6 @@ def scrape_place(driver, url, original_query):
         "//*[contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'busy')]"
     )
 
-    logging.info(f"Found {len(elements)} elements containing 'busy' in aria-label")
-
     for i, el in enumerate(elements[:100]):
         try:
             logging.info(
@@ -255,7 +267,23 @@ def scrape_place(driver, url, original_query):
 
     logging.info("========== END RAW BUSY DATA ==========")
     #next step is parse driver.page_source get aria-labels with "busy" and extract the text content, then parse that into structured data.
-    parsed_days = parse_popular_times(visible_data)
+    print("visible_data: " + str(driver.page_source))
+    #parsed_days = parse_popular_times_v2(driver.page_source,f"./{safe_name}.txt")
+    elements = driver.find_elements(
+    By.CSS_SELECTOR,
+    "div[role='img']"
+)
+    print(elements)
+    for a in elements:
+        print(a.get_attribute("aria-label"))
+        aria = a.get_attribute("aria-label")
+        if aria and "繁忙程度" in aria:
+            print(a.get_attribute("outerHTML"))
+            print("PARENT:")
+            print(a.find_element(By.XPATH, "..").get_attribute("outerHTML"))
+        break
+    """
+    
     
     structured_data = {}
     if len(parsed_days) == 7:
@@ -263,7 +291,7 @@ def scrape_place(driver, url, original_query):
             structured_data[DAYS[i]] = day_items
     else:
         structured_data["CollectedData"] = visible_data
-
+    """
     return {
         "query": original_query,
         "name": place_name,
@@ -289,7 +317,7 @@ def main():
         for query in queries:  # Limit to first query for debugging
             urls = get_place_urls(driver, query)
             
-            for url in urls[:3]:  # Limit to first 10 URLs for debugging
+            for url in urls[:10]:  # Limit to first 10 URLs for debugging
                 try:
                     data = scrape_place(driver, url, query)
                     if data:
