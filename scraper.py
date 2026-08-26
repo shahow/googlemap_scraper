@@ -178,7 +178,7 @@ def scrape_place(driver, url, original_query):
             if message["method"] != "Network.responseReceived":
                 continue
             
-            logging.info(f"Processing performance log: {message}")
+            #logging.info(f"Processing performance log: {message}")
             response = message["params"]["response"]
             request_id = message["params"]["requestId"]
             response_url = response["url"]
@@ -274,9 +274,24 @@ def scrape_place(driver, url, original_query):
     By.CSS_SELECTOR,
     "div[role='img']"
 )
-    conn = MariaDB.getConn()
-    cursor = conn.cursor()
-    print(elements)
+    #conn = MariaDB.getConn()
+    #cursor = conn.cursor()
+
+    nurl = driver.current_url
+    nowurl = nurl.replace("https://www.google.com/maps/place/", "")
+    print("nowurl: " +  nowurl)
+    urlarr = nowurl.split("data=")
+    parr = urlarr[0].split("@")
+
+    
+    pointarr = parr[1].split(",")
+    latitude = pointarr[0]
+    longitude = pointarr[1]
+
+    print("place name: " + parr[0])
+    print("latitude: " + latitude)
+    print("longitude: " + longitude)
+
     for a in elements:
         print(a.get_attribute("aria-label"))
         text = a.get_attribute("aria-label")
@@ -286,8 +301,8 @@ def scrape_place(driver, url, original_query):
             hour, busy = m.groups()
             #print(hour)  # 5
             #print(busy)  # 0
-    cursor.close()
-    conn.close()
+    #cursor.close()
+    #conn.close()
 
     """
     
@@ -324,7 +339,7 @@ def main():
         for query in queries:  # Limit to first query for debugging
             urls = get_place_urls(driver, query)
             
-            for url in urls[:10]:  # Limit to first 10 URLs for debugging
+            for url in urls[:1]:  # Limit to first 1 URL for debugging
                 try:
                     data = scrape_place(driver, url, query)
                     if data:
