@@ -274,6 +274,9 @@ def scrape_place(driver, url, original_query):
     By.CSS_SELECTOR,
     "div[role='img']"
 )
+    buttons = driver.find_elements(By.CSS_SELECTOR, "button.CsEnBe")
+    print("address: " + buttons[0].get_attribute("aria-label"))
+    
     #conn = MariaDB.getConn()
     #cursor = conn.cursor()
 
@@ -301,7 +304,6 @@ def scrape_place(driver, url, original_query):
         text = a.get_attribute("aria-label") or ""
         print("this is the aria-label: " + text)
         if text.endswith(("顆星", "stars")):
-            print("Found star rating!")
             rating = re.search(r"(\d+(?:\.\d+)?)", text)
             star = rating.group(1) if rating else ""
             print("star: " + star)
@@ -310,7 +312,6 @@ def scrape_place(driver, url, original_query):
         if m:
             hour, busy = m.groups()
             hour = int(hour)
-            print(f"Parsed busy data: hour={hour}, busy={busy}")
             if previous_hour is not None and hour < previous_hour:
                 day_index += 1
             if day_index < len(DAYS):
@@ -341,6 +342,7 @@ def scrape_place(driver, url, original_query):
         "latitude": latitude,
         "longitude": longitude,
         "star": star,
+        "address": buttons[0].get_attribute("aria-label") if buttons else "",
         "popular_times": busydata
     }
 
