@@ -21,7 +21,7 @@ from selenium.common.exceptions import TimeoutException, WebDriverException
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+DAYS = [ "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 def get_driver():
     options = webdriver.ChromeOptions()
@@ -294,21 +294,35 @@ def scrape_place(driver, url, original_query):
     print("longitude: " + longitude)
 
     star = ""
+    busydata = {day: [] for day in DAYS}
+    day_index = 0
+    previous_hour = None
     for a in elements:
-        print("this is the aria-label: " + a.get_attribute("aria-label"))
-        text = a.get_attribute("aria-label")
-        if text.endswith("顆星"):
+        text = a.get_attribute("aria-label") or ""
+        print("this is the aria-label: " + text)
+        if text.endswith(("顆星", "stars")):
             print("Found star rating!")
-            star = text.split("顆星")[0]
+            rating = re.search(r"(\d+(?:\.\d+)?)", text)
+            star = rating.group(1) if rating else ""
             print("star: " + star)
         m = re.search(r'(\d+)時的繁忙程度通常為\s*(\d+)%', text)
 
         if m:
             hour, busy = m.groups()
-            #print(hour)  # 5
-            #print(busy)  # 0
+            hour = int(hour)
+            print(f"Parsed busy data: hour={hour}, busy={busy}")
+            if previous_hour is not None and hour < previous_hour:
+                day_index += 1
+            if day_index < len(DAYS):
+                busydata[DAYS[day_index]].append({
+                    "hour": hour,
+                    "occupancy": int(busy),
+                    "raw": text,
+                })
+            previous_hour = hour
     #cursor.close()
     #conn.close()
+    print("busydata: " + str(busydata))
 
     """
     
@@ -324,7 +338,10 @@ def scrape_place(driver, url, original_query):
         "query": original_query,
         "name": place_name,
         "url": url,
-        "popular_times": structured_data
+        "latitude": latitude,
+        "longitude": longitude,
+        "star": star,
+        "popular_times": busydata
     }
 
 def main():
