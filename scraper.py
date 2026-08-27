@@ -280,21 +280,27 @@ def scrape_place(driver, url, original_query):
     nurl = driver.current_url
     nowurl = nurl.replace("https://www.google.com/maps/place/", "")
     print("nowurl: " +  nowurl)
-    urlarr = nowurl.split("data=")
-    parr = urlarr[0].split("@")
-
-    
-    pointarr = parr[1].split(",")
-    latitude = pointarr[0]
-    longitude = pointarr[1]
-
-    print("place name: " + parr[0])
+    coordinates = re.search(r"!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)", nowurl)
+    if coordinates:
+        latitude, longitude = coordinates.groups()
+    else:
+        coordinates = re.search(r"@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)", nowurl)
+        if not coordinates:
+            raise ValueError(f"Could not find coordinates in Maps URL: {nurl}")
+        latitude, longitude = coordinates.groups()
+   
+    print("place name: " + place_name)
     print("latitude: " + latitude)
     print("longitude: " + longitude)
 
+    star = ""
     for a in elements:
-        print(a.get_attribute("aria-label"))
+        print("this is the aria-label: " + a.get_attribute("aria-label"))
         text = a.get_attribute("aria-label")
+        if text.endswith("顆星"):
+            print("Found star rating!")
+            star = text.split("顆星")[0]
+            print("star: " + star)
         m = re.search(r'(\d+)時的繁忙程度通常為\s*(\d+)%', text)
 
         if m:
