@@ -199,7 +199,6 @@ def scrape_place(driver, url, original_query):
 
                 body = result.get("body", "")
 
- 
                 filename = os.path.join(
                     "sponse_dir",
                     f"{safe_name}.txt"
@@ -275,14 +274,12 @@ def scrape_place(driver, url, original_query):
     "div[role='img']"
 )
     buttons = driver.find_elements(By.CSS_SELECTOR, "button.CsEnBe")
-    print("address: " + buttons[0].get_attribute("aria-label"))
+    #print("address: " + buttons[0].get_attribute("aria-label"))
     
-    #conn = MariaDB.getConn()
-    #cursor = conn.cursor()
 
     nurl = driver.current_url
     nowurl = nurl.replace("https://www.google.com/maps/place/", "")
-    print("nowurl: " +  nowurl)
+    #print("nowurl: " +  nowurl)
     coordinates = re.search(r"!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)", nowurl)
     if coordinates:
         latitude, longitude = coordinates.groups()
@@ -292,9 +289,9 @@ def scrape_place(driver, url, original_query):
             raise ValueError(f"Could not find coordinates in Maps URL: {nurl}")
         latitude, longitude = coordinates.groups()
    
-    print("place name: " + place_name)
-    print("latitude: " + latitude)
-    print("longitude: " + longitude)
+    #print("place name: " + place_name)
+    #print("latitude: " + latitude)
+    #print("longitude: " + longitude)
 
     star = ""
     busydata = {day: [] for day in DAYS}
@@ -302,11 +299,11 @@ def scrape_place(driver, url, original_query):
     previous_hour = None
     for a in elements:
         text = a.get_attribute("aria-label") or ""
-        print("this is the aria-label: " + text)
+        #print("this is the aria-label: " + text)
         if text.endswith(("顆星", "stars")):
             rating = re.search(r"(\d+(?:\.\d+)?)", text)
             star = rating.group(1) if rating else ""
-            print("star: " + star)
+            #print("star: " + star)
         m = re.search(r'(\d+)時的繁忙程度通常為\s*(\d+)%', text)
 
         if m:
@@ -323,11 +320,9 @@ def scrape_place(driver, url, original_query):
             previous_hour = hour
     #cursor.close()
     #conn.close()
-    print("busydata: " + str(busydata))
+    
 
     """
-    
-    
     structured_data = {}
     if len(parsed_days) == 7:
         for i, day_items in enumerate(parsed_days):
@@ -385,80 +380,70 @@ def main():
         json.dump(all_results, f, indent=4)
     logging.info(f"Scraping completed. Found data for {len(all_results)} places. Saved to popular_times.json")
 
-    # Save Excel
-    logging.info("Preparing Excel export...")
-    flattened_data = []
+    # Read the JSON and write place and popular-times data to MariaDB.
+    conn = MariaDB.getConn()
+    cursor = conn.cursor()
+    try:
 
-    for entry in all_results:
-        q = entry.get("query")
-        n = entry.get("name")
-        u = entry.get("url")
-        pt = entry.get("popular_times", {})
-        
-        # Check standard 7 days
-        days_found = False
-        for day_name in DAYS:
-            key = day_name
-            if key in pt:
-                days_found = True
-                for hour_data in pt[key]:
-                    flattened_data.append({
-                        "Query": q,
-                        "Place Name": n,
-                        "URL": u,
-                        "Day": key,
-                        "Hour": hour_data.get("hour"),
-                        "Occupancy (%)": hour_data.get("occupancy"),
-                        "Raw Text": hour_data.get("raw")
-                    })
-        
-        # If not standard, check CollectedData
-        if not days_found and "CollectedData" in pt:
-             raw_list = pt["CollectedData"]
-             parsed_list = parse_popular_times(raw_list) 
-             
-             for day_idx, day_items in enumerate(parsed_list):
-                 day_label = DAYS[day_idx] if day_idx < 7 else f"Day {day_idx+1}"
-                 for hour_data in day_items:
-                     flattened_data.append({
-                        "Query": q,
-                        "Place Name": n,
-                        "URL": u,
-                        "Day": day_label,
-                        "Hour": hour_data.get("hour"),
-                        "Occupancy (%)": hour_data.get("occupancy"),
-                        "Raw Text": hour_data.get("raw")
-                     })
+        location_sql = """
+            INSERT INTO location (name, address, latitude, longitude)
+            SELECT ?, ?, ?, ? FROM DUAL
+            WHERE NOT EXISTS (
+                SELECT 1 FROM location
+                WHERE name = ? AND address = ? AND latitude = ? AND longitude = ?
+            )
+        """
+        popular_times_sql = """
+            INSERT INTO location_busy
+                (location_id, hour,busy,weekday)
+          VALUES (?, ?, ?, ?)
+        """
 
-    if flattened_data:
-        df = pd.DataFrame(flattened_data)
-        
-        # Save aggregate
-        try:
-            df.to_excel("popular_times.xlsx", index=False)
-            logging.info("Saved aggregate data to popular_times.xlsx")
-        except Exception as e:
-            logging.error(f"Could not save aggregate Excel: {e}")
+        imported_rows = 0
+        for entry in all_results:
+            name = str(entry.get("name") or "Unknown")
+            address = (entry.get("address") or "").replace("地址: ", "", 1)
+            latitude = entry.get("latitude") or None
+            longitude = entry.get("longitude") or None
+            star = entry.get("star") or None
 
-        # Save individual files per query
-        unique_queries = df["Query"].unique()
-        for query in unique_queries:
-            if not query:
-                continue
-            
-            # Sanitize filename
-            safe_name = re.sub(r'[\\/*?:"<>|]', "_", str(query))
-            filename = f"{safe_name}.xlsx"
-            
-            query_df = df[df["Query"] == query]
-            try:
-                query_df.to_excel(filename, index=False)
-                logging.info(f"Saved {len(query_df)} rows to {filename}")
-            except Exception as e:
-                logging.error(f"Could not save {filename}: {e}")
-            
-    else:
-        logging.info("No data to export.")
+            cursor.execute(location_sql, (
+                name, address, latitude, longitude,
+                name, address, latitude, longitude,
+            ))
+
+            cursor.execute("SELECT id FROM location WHERE name = ? AND address = ? AND latitude = ? AND longitude = ?", (name, address, latitude, longitude))
+            location_id = cursor.fetchone()[0]
+
+
+            popular_times = entry.get("popular_times") or {}
+            print(f"Processing popular_times for {name}: {popular_times}")
+            for day_name in DAYS:
+                for hour_data in popular_times.get(day_name, []):
+                    hour = hour_data.get("hour")
+                    occupancy = hour_data.get("occupancy")
+                    print(f"Day: {day_name}, Hour: {hour}, Occupancy: {occupancy}")
+                    if not isinstance(hour, int) or not 0 <= hour <= 23:
+                        continue
+                    if not isinstance(occupancy, int) or not 0 <= occupancy <= 100:
+                        continue
+                    
+                    cursor.execute(popular_times_sql, (
+                        location_id, hour, occupancy, day_name
+                    ))
+                    
+                    imported_rows += 1
+
+        conn.commit()
+        logging.info("Imported %d popular-times rows into MariaDB", imported_rows)
+    except Exception:
+        conn.rollback()
+        logging.exception("Could not write popular-times data to MariaDB")
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
 
 if __name__ == "__main__":
     main()
