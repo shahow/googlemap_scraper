@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "mariadb>=1.1.14",
     "pandas>=3.0.5",
     "selenium>=4.47.0",
     "webdriver-manager>=4.1.2",

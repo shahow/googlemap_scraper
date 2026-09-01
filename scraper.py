@@ -341,14 +341,10 @@ def scrape_place(driver, url, original_query):
         "popular_times": busydata
     }
 
-def main():
-    queries = []
-    try:
-        with open("queries.txt", "r") as f:
-            queries = [line.strip() for line in f if line.strip()]
-    except FileNotFoundError:
-        logging.error("queries.txt not found.")
-        return
+def main(queries=None):
+    if queries is None:
+        logging.error("queries not found.")
+        return []
 
     all_results = []
     driver = None
@@ -445,5 +441,34 @@ def main():
         conn.close()
 
 
+#if __name__ == "__main__":
+#    main()
+
+def lambda_handler(event, context):
+    queries = event.get("queries", [])
+
+    if isinstance(queries, str):
+        queries = [queries]
+
+    if not queries:
+        return {
+            "statusCode": 400,
+            "body": json.dumps({"error": "queries is required"})
+        }
+
+    results = main(queries)
+
+    return {
+        "statusCode": 200,
+        "body": json.dumps(results, ensure_ascii=False)
+    }
+
 if __name__ == "__main__":
-    main()
+    event = {
+        "queries": [
+            "Starbucks Taipei",
+            "Coffee shop Taichung"
+        ]
+    }
+
+    lambda_handler(event, None)
