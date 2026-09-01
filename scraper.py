@@ -8,7 +8,6 @@ import re
 
 import pandas as pd
 import mymariadb as MariaDB
-from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -43,14 +42,14 @@ def parse_popular_times_v2(htmltext,filename):
     By.CSS_SELECTOR,
     "div[role='img']"
     )
-    soup = BeautifulSoup(htmltext, "html.parser")
-    #divs_with_labels = soup.select('div[aria-label]')
-    div_tags = soup.find_all("div", role_="img")
-    img_tags = soup.select('div.entry-content img')
     with open(filename, "w", encoding="utf-8") as f:
-        f.write(str(img_tags))
-    print(len(img_tags))
-    return None
+        for element in elements:
+            aria = element.get_attribute("aria-label")
+            if aria:
+                f.write(aria + "\n")
+
+    print(len(elements))
+    return elements
 
 def parse_popular_times(flat_data):
     """
