@@ -164,6 +164,26 @@ def get_place_urls(driver, query):
             
     return []
 
+def get_realtime_busy(driver):
+    elements = driver.find_elements(
+        By.XPATH,
+        "//*[normalize-space(text())='即時' or normalize-space(text())='Live']"
+    )
+
+    if not elements:
+        return None
+
+    try:
+        busy_element = elements[0].find_element(
+            By.XPATH,
+            "./following-sibling::*[1]"
+        )
+
+        return busy_element.text.strip()
+
+    except Exception:
+        return None
+
 def scrape_place(driver, url, original_query):
     logging.info(f"Scraping place URL: {url}")
     driver.get(url)
@@ -288,9 +308,9 @@ def scrape_place(driver, url, original_query):
             raise ValueError(f"Could not find coordinates in Maps URL: {nurl}")
         latitude, longitude = coordinates.groups()
    
-    #print("place name: " + place_name)
-    #print("latitude: " + latitude)
-    #print("longitude: " + longitude)
+    print("place name: " + place_name)
+    print("latitude: " + latitude)
+    print("longitude: " + longitude)
 
     star = ""
     busydata = {day: [] for day in DAYS}
@@ -319,16 +339,8 @@ def scrape_place(driver, url, original_query):
             previous_hour = hour
     #cursor.close()
     #conn.close()
+    busystatus = get_realtime_busy(driver)
     
-
-    """
-    structured_data = {}
-    if len(parsed_days) == 7:
-        for i, day_items in enumerate(parsed_days):
-            structured_data[DAYS[i]] = day_items
-    else:
-        structured_data["CollectedData"] = visible_data
-    """
     return {
         "query": original_query,
         "name": place_name,
@@ -337,7 +349,8 @@ def scrape_place(driver, url, original_query):
         "longitude": longitude,
         "star": star,
         "address": buttons[0].get_attribute("aria-label") if buttons else "",
-        "popular_times": busydata
+        "popular_times": busydata,
+        "busystatus": busystatus
     }
 
 def main(queries=None):
@@ -394,6 +407,11 @@ def main(queries=None):
           VALUES (?, ?, ?, ?)
         """
 
+        busystatus_sql = """
+            INSERT INTO busystatus
+                (location_id, busystatus)   
+                VALUES (?, ?)"""
+
         imported_rows = 0
         for entry in all_results:
             name = str(entry.get("name") or "Unknown")
@@ -401,6 +419,7 @@ def main(queries=None):
             latitude = entry.get("latitude") or None
             longitude = entry.get("longitude") or None
             star = entry.get("star") or None
+            busystatus = entry.get("busystatus") or None
 
             cursor.execute(location_sql, (
                 name, address, latitude, longitude,
@@ -428,6 +447,9 @@ def main(queries=None):
                     ))
                     
                     imported_rows += 1
+
+            if busystatus is not None:
+                cursor.execute(busystatus_sql, (location_id, busystatus))
 
         conn.commit()
         logging.info("Imported %d popular-times rows into MariaDB", imported_rows)
