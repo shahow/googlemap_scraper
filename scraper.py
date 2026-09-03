@@ -5,6 +5,7 @@ import json
 import logging
 import traceback
 import re
+import uuid
 
 import pandas as pd
 import mymariadb as MariaDB
@@ -392,25 +393,30 @@ def main(queries=None):
     conn = MariaDB.getConn()
     cursor = conn.cursor()
     try:
+        call_id = str(uuid.uuid4())
+        cursor.execute("""
+            INSERT INTO call_log (call_id)
+            VALUES (%s)
+        """, (call_id,))
 
         location_sql = """
-            INSERT INTO location (name, address, latitude, longitude)
-            SELECT ?, ?, ?, ? FROM DUAL
+            INSERT INTO location (name, address, latitude, longitude,star)
+            SELECT ?, ?, ?, ?, ? FROM DUAL
             WHERE NOT EXISTS (
                 SELECT 1 FROM location
-                WHERE name = ? AND address = ? AND latitude = ? AND longitude = ?
+                WHERE name = ? AND address = ? AND latitude = ? AND longitude = ? AND star = ?
             )
         """
         popular_times_sql = """
             INSERT INTO location_busy
-                (location_id, hour,busy,weekday)
-          VALUES (?, ?, ?, ?)
+                (location_id,call_id, hour,busy,weekday)
+          VALUES (?, ?, ?, ?, ?)
         """
 
         busystatus_sql = """
             INSERT INTO busystatus
-                (location_id, busystatus)   
-                VALUES (?, ?)"""
+                (location_id, call_id, busystatus)   
+                VALUES (?, ?, ?)"""
 
         imported_rows = 0
         for entry in all_results:
@@ -422,8 +428,8 @@ def main(queries=None):
             busystatus = entry.get("busystatus") or None
 
             cursor.execute(location_sql, (
-                name, address, latitude, longitude,
-                name, address, latitude, longitude,
+                name, address, latitude, longitude, star,
+                name, address, latitude, longitude, star
             ))
 
             cursor.execute("SELECT id FROM location WHERE name = ? AND address = ? AND latitude = ? AND longitude = ?", (name, address, latitude, longitude))
@@ -443,13 +449,13 @@ def main(queries=None):
                         continue
                     
                     cursor.execute(popular_times_sql, (
-                        location_id, hour, occupancy, day_name
+                        location_id, call_id, hour, occupancy, day_name
                     ))
                     
                     imported_rows += 1
 
             if busystatus is not None:
-                cursor.execute(busystatus_sql, (location_id, busystatus))
+                cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
 
         conn.commit()
         logging.info("Imported %d popular-times rows into MariaDB", imported_rows)
