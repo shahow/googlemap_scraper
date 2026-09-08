@@ -7,8 +7,7 @@ def getConn():
     conn = snowflake.connector.connect(
         user='shahow11',#change to your snowflake username
         #password=os.getenv('SNOWFLAKE_PASSWORD'),
-        password=os.getenv('SNOWFLAKE_PASSWORD'),
-        passcode="429849",
+        password=os.getenv('SNOWFLAKE_SERVICE_AGENT_TOKEN'),
         account='evnwclk-nd59466',
         warehouse='COMPUTE_WH',
         database='HOTSPOT',
