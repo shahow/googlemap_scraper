@@ -8,7 +8,8 @@ import re
 import uuid
 
 import pandas as pd
-import mymariadb as MariaDB
+#import mymariadb as MariaDB
+import snowflake_connector as sf
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -224,8 +225,8 @@ def scrape_place(driver, url, original_query):
                     f"{safe_name}.txt"
                 )
 
-                with open(filename, "w", encoding="utf-8") as f:
-                    f.write(body)
+                #with open(filename, "w", encoding="utf-8") as f:
+                #    f.write(body)
 
                 logging.info(
                     f"Saved place response: {filename} "
@@ -285,8 +286,8 @@ def scrape_place(driver, url, original_query):
     #html = driver.page_source
     safe_name = re.sub(r'[\\/*?:"<>|]', "_", place_name)
 
-    with open(f"debug_{safe_name}.html", "w", encoding="utf-8") as f:
-        f.write(driver.page_source)
+    #with open(f"debug_{safe_name}.html", "w", encoding="utf-8") as f:
+    #    f.write(driver.page_source)
 
     logging.info("========== END RAW BUSY DATA ==========")
     elements = driver.find_elements(
@@ -390,12 +391,12 @@ def main(queries=None):
     logging.info(f"Scraping completed. Found data for {len(all_results)} places. Saved to popular_times.json")
 
     # Read the JSON and write place and popular-times data to MariaDB.
-    conn = MariaDB.getConn()
+    conn = sf.getConn()
     cursor = conn.cursor()
     try:
         call_id = str(uuid.uuid4())
         cursor.execute("""
-            INSERT INTO call_log (call_id)
+            INSERT INTO GMAP_DB.PUBLIC.CALL_LOG (call_id)
             VALUES (%s)
         """, (call_id,))
 

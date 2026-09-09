@@ -10,20 +10,29 @@ def getConn():
     account = os.getenv("SNOWFLAKE_ACCOUNT")
     token = os.getenv("SNOWFLAKE_SERVICE_AGENT_TOKEN")
 
-    print("Account:", account)
-    print("Token loaded:", bool(token))
-    print("Token length:", len(token) if token else 0)
-
-    conn = snowflake.connector.connect(
+    connection_options = dict(
         user='HOTSPOT_AGENT',#change to your snowflake username
-        password=os.getenv('SNOWFLAKE_SERVICE_AGENT_TOKEN'),
-        #account=os.getenv('SNOWFLAKE_ACCOUNT'),
-        account='evnwclk-nd59466',
+        password=token,
+        account=account,
         warehouse='COMPUTE_WH',
-        database='HOTSPOT',
+        database='GMAP_DB',
         schema='PUBLIC'
     )
-    print("Connected to Snowflake")
+    role = os.getenv("SNOWFLAKE_ROLE")
+    if role:
+        connection_options["role"] = role
+
+    conn = snowflake.connector.connect(**connection_options)
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT
+        CURRENT_USER(),
+        CURRENT_ROLE(),
+        CURRENT_DATABASE(),
+        CURRENT_SCHEMA()
+""")
+
+    print(cursor.fetchall())
     return conn
 
 getConn()
