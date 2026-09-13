@@ -10,6 +10,7 @@ import uuid
 import pandas as pd
 #import mymariadb as MariaDB
 import snowflake_connector as sf
+from get_weather import save_weather_data_to_snowflake
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -393,6 +394,7 @@ def main(queries=None):
     # Read the JSON and write place and popular-times data to MariaDB.
     conn = sf.getConn()
     cursor = conn.cursor()
+    cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
     try:
         call_id = str(uuid.uuid4())
         cursor.execute("""
@@ -401,23 +403,23 @@ def main(queries=None):
         """, (call_id,))
 
         location_sql = """
-            INSERT INTO location (name, address, latitude, longitude,star)
-            SELECT ?, ?, ?, ?, ? FROM DUAL
+            INSERT INTO GMAP_DB.PUBLIC.location (name, address, latitude, longitude,star)
+            SELECT %s, %s, %s, %s, %s
             WHERE NOT EXISTS (
-                SELECT 1 FROM location
-                WHERE name = ? AND address = ? AND latitude = ? AND longitude = ? AND star = ?
+                SELECT 1 FROM GMAP_DB.PUBLIC.location
+                WHERE name = %s AND address = %s AND latitude = %s AND longitude = %s AND star = %s
             )
         """
         popular_times_sql = """
-            INSERT INTO location_busy
+            INSERT INTO GMAP_DB.PUBLIC.location_busy
                 (location_id,call_id, hour,busy,weekday)
-          VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
         """
 
         busystatus_sql = """
-            INSERT INTO busystatus
+            INSERT INTO GMAP_DB.PUBLIC.busystatus
                 (location_id, call_id, busystatus)   
-                VALUES (?, ?, ?)"""
+                VALUES (%s, %s, %s)"""
 
         imported_rows = 0
         for entry in all_results:
@@ -433,12 +435,14 @@ def main(queries=None):
                 name, address, latitude, longitude, star
             ))
 
-            cursor.execute("SELECT id FROM location WHERE name = ? AND address = ? AND latitude = ? AND longitude = ?", (name, address, latitude, longitude))
+            cursor.execute("SELECT id FROM GMAP_DB.PUBLIC.location WHERE name = %s AND address = %s AND latitude = %s AND longitude = %s", (name, address, latitude, longitude))
             location_id = cursor.fetchone()[0]
 
 
             popular_times = entry.get("popular_times") or {}
             print(f"Processing popular_times for {name}: {popular_times}")
+            popularlist=[]
+            
             for day_name in DAYS:
                 for hour_data in popular_times.get(day_name, []):
                     hour = hour_data.get("hour")
@@ -448,21 +452,25 @@ def main(queries=None):
                         continue
                     if not isinstance(occupancy, int) or not 0 <= occupancy <= 100:
                         continue
-                    
-                    cursor.execute(popular_times_sql, (
-                        location_id, call_id, hour, occupancy, day_name
-                    ))
-                    
-                    imported_rows += 1
 
-            if busystatus is not None:
-                cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
+                    
+                    popularlist.append((location_id, call_id, hour, occupancy, day_name))
+
+            #for row in popularlist:
+            #    cursor.execute(popular_times_sql, row)
+            #    imported_rows += 1
+            if len(popularlist) > 0:
+                cursor.executemany(popular_times_sql, popularlist)
+
+            #if busystatus is not None:
+            #    cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
+        save_weather_data_to_snowflake(conn)
 
         conn.commit()
-        logging.info("Imported %d popular-times rows into MariaDB", imported_rows)
+        logging.info("Imported %d popular-times rows into GMAP_DB.PUBLIC.location_busy", imported_rows)
     except Exception:
         conn.rollback()
-        logging.exception("Could not write popular-times data to MariaDB")
+        logging.exception("Could not write popular-times data to GMAP_DB.PUBLIC.location_busy")
         raise
     finally:
         cursor.close()

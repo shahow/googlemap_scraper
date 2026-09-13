@@ -33,6 +33,7 @@ def getConn():
 """)
 
     print(cursor.fetchall())
+    cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
     return conn
 
 getConn()
