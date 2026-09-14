@@ -2,7 +2,9 @@ import requests
 from datetime import datetime
 import boto3
 from dotenv import load_dotenv
+import os
 import snowflake_connector as sf
+import uuid
 
 headers = {
     "User-Agent": (
@@ -114,9 +116,11 @@ stockfilename =r'yahoo_stock_{0}.html'. format(datetime.now().strftime('%Y%m%d')
 #uploads3(stocksurl,stockfilename)
 """
 
-def save_weather_data_to_snowflake(connection):
+def save_weather_data_to_snowflake(connection, call_id):
+    load_dotenv( dotenv_path=r"C:\Users\User\gmap_test\.env")
+    account = os.getenv("CWA_APIKEY")
     url = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001'
-    params = {    'Authorization': 'CWA-2644B577-CA33-4B0B-A4C8-F8D05D5E0DDE',
+    params = {    'Authorization': account,
     'format': 'JSON',
     'locationName': '中壢',
     'elementName': 'WeatherElement'
@@ -217,7 +221,6 @@ def save_weather_data_to_snowflake(connection):
         record['StationLatitude'] = get_value(location, 'StationLatitude')
         record['StationLongitude'] = get_value(location, 'StationLongitude')
         taichung_data.append(record)
-    print(taichung_data)
     station_insert_sql = """
 INSERT INTO weather_station (
     station_id, station_name, latitude, longitude, station_altitude,
@@ -252,8 +255,8 @@ ON DUPLICATE KEY UPDATE
     INSERT INTO weather_observation (
     station_id, weather, precipitation, wind_direction, wind_speed,
     air_temperature, relative_humidity, air_pressure, uv_index,
-    peak_gust_speed, observation_time)
-      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    peak_gust_speed, observation_time,call_id)
+      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)
    
     """
 
@@ -263,7 +266,7 @@ ON DUPLICATE KEY UPDATE
         decimal_value(row['WindDirection']), decimal_value(row['WindSpeed']),
         decimal_value(row['AirTemperature']), decimal_value(row['RelativeHumidity']),
         decimal_value(row['AirPressure']), decimal_value(row['UVIndex']),
-        decimal_value(row['PeakGustSpeed']), row['DateTime'],
+        decimal_value(row['PeakGustSpeed']), row['DateTime'], call_id
     )
     for row in taichung_data
     ]
@@ -277,8 +280,7 @@ ON DUPLICATE KEY UPDATE
         print("No existing stations found in the database.")
         existing_stations = set()
     else:
-        existing_stations = set(df['station_id'].unique())
-    print(existing_stations)
+        existing_stations = set(df['station_id'.upper()].unique())
         
     for row in taichung_data:
         if row['StationId'] not in existing_stations:
@@ -288,11 +290,12 @@ ON DUPLICATE KEY UPDATE
                     row['CountyName'], row['TownName'], row['CountyCode'], row['TownCode']
                     ))
     
-    #cursor.executemany(station_insert_sql, station_rows)
     cursor.executemany(observation_insert_sql, observation_rows)
-    #connection.commit()
+    connection.commit()
 
 load_dotenv( dotenv_path=r"C:\Users\User\gmap_test\.env")
 account = os.getenv("SNOWFLAKE_ACCOUNT")
 conn = sf.getConn()
-save_weather_data_to_snowflake(conn)
+call_id = str(uuid.uuid4())
+
+save_weather_data_to_snowflake(conn, call_id)

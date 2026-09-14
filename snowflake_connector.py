@@ -24,15 +24,7 @@ def getConn():
 
     conn = snowflake.connector.connect(**connection_options)
     cursor = conn.cursor()
-    cursor.execute("""
-    SELECT
-        CURRENT_USER(),
-        CURRENT_ROLE(),
-        CURRENT_DATABASE(),
-        CURRENT_SCHEMA()
-""")
 
-    print(cursor.fetchall())
     cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
     return conn
 

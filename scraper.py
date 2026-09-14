@@ -1,4 +1,5 @@
 from ast import Import
+from datetime import datetime
 import os
 import time
 import json
@@ -8,9 +9,11 @@ import re
 import uuid
 
 import pandas as pd
+from requests import request
+import requests
 #import mymariadb as MariaDB
 import snowflake_connector as sf
-from get_weather import save_weather_data_to_snowflake
+from get_weather import save_weather_data_to_snowflake,save_txt
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -190,7 +193,8 @@ def get_realtime_busy(driver):
 def scrape_place(driver, url, original_query):
     logging.info(f"Scraping place URL: {url}")
     driver.get(url)
-    time.sleep(3) # Wait for load
+    #input("請手動確認 Chrome 畫面，按 Enter 繼續...")
+    time.sleep(5) # Wait for load
 
     logs = driver.get_log("performance")
     for entry in logs:
@@ -204,6 +208,22 @@ def scrape_place(driver, url, original_query):
             response = message["params"]["response"]
             request_id = message["params"]["requestId"]
             response_url = response["url"]
+
+            if "/maps/preview/place" in response_url:
+                result = driver.execute_cdp_cmd(
+        "Network.getResponseBody",
+        {"requestId": request_id}
+             )
+
+                body = result.get("body", "")
+
+                print("URL:", response_url)
+                print("即時:", "即時" in body)
+                print("繁忙:", "繁忙" in body)
+                print("busy:", "busy" in body.lower())
+
+                save_txt(response_url, "response{0}.txt".format(datetime.now().strftime('%Y%m%d_%H%M%S')))
+                
 
             if "/maps/preview/place" not in response_url:
                 continue
@@ -219,8 +239,10 @@ def scrape_place(driver, url, original_query):
                     {"requestId": request_id}
                 )
 
-                body = result.get("body", "")
+                
 
+
+              
                 filename = os.path.join(
                     "sponse_dir",
                     f"{safe_name}.txt"
@@ -287,8 +309,8 @@ def scrape_place(driver, url, original_query):
     #html = driver.page_source
     safe_name = re.sub(r'[\\/*?:"<>|]', "_", place_name)
 
-    #with open(f"debug_{safe_name}.html", "w", encoding="utf-8") as f:
-    #    f.write(driver.page_source)
+    with open(f"debug_{safe_name}.html", "w", encoding="utf-8") as f:
+        f.write(driver.page_source)
 
     logging.info("========== END RAW BUSY DATA ==========")
     elements = driver.find_elements(
@@ -370,7 +392,7 @@ def main(queries=None):
         for query in queries:  # Limit to first query for debugging
             urls = get_place_urls(driver, query)
             
-            for url in urls[:1]:  # Limit to first 1 URL for debugging
+            for url in urls:  # Limit to first 1 URL for debugging
                 try:
                     data = scrape_place(driver, url, query)
                     if data:
@@ -464,7 +486,7 @@ def main(queries=None):
 
             #if busystatus is not None:
             #    cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
-        save_weather_data_to_snowflake(conn)
+        save_weather_data_to_snowflake(conn, call_id)
 
         conn.commit()
         logging.info("Imported %d popular-times rows into GMAP_DB.PUBLIC.location_busy", imported_rows)
@@ -503,7 +525,7 @@ if __name__ == "__main__":
     event = {
         "queries": [
             "Starbucks Taipei",
-            "Coffee shop Taichung"
+         #   "Coffee shop Taichung"
         ]
     }
 
