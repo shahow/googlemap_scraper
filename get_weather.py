@@ -94,6 +94,11 @@ def uploads3(filepath,filename):
     s3.upload_file(filepath, bucket_name, s3_object_key)    
     print("File uploaded successfully!")
 
+def save_txt(url, file_path):
+    response = requests.get(url, headers=headers)
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(response.text)
+
 def save_page(url, file_path):
     response = requests.get(url, headers=headers)
     with open(file_path, 'w', encoding='utf-8') as f:

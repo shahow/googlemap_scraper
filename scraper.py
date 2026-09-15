@@ -234,7 +234,6 @@ def scrape_place(driver, url, original_query):
                 print("busy:", "busy" in body.lower())
 
                 temp_filename = f"{safe_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-                driver.get(response_url)
                 with open(temp_filename, "w", encoding="utf-8") as f:
                     f.write(driver.page_source)
 
@@ -486,6 +485,7 @@ def main(queries=None):
             #    imported_rows += 1
             if len(popularlist) > 0:
                 cursor.executemany(popular_times_sql, popularlist)
+                imported_rows += len(popularlist)
 
             if busystatus is not None:
                 cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
