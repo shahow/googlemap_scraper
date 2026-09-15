@@ -196,6 +196,17 @@ def scrape_place(driver, url, original_query):
     #input("請手動確認 Chrome 畫面，按 Enter 繼續...")
     time.sleep(5) # Wait for load
 
+    wait = WebDriverWait(driver, 10)
+    place_name = "Unknown"
+    try:
+        h1 = wait.until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
+        place_name = h1.text.strip()
+        logging.info(f"Place Name: {place_name}")
+    except Exception:
+        pass
+
+    safe_name = re.sub(r'[\\/*?:"<>|]', "_", place_name)
+
     logs = driver.get_log("performance")
     for entry in logs:
         try:
@@ -222,8 +233,10 @@ def scrape_place(driver, url, original_query):
                 print("繁忙:", "繁忙" in body)
                 print("busy:", "busy" in body.lower())
 
-                save_txt(response_url, "response{0}.txt".format(datetime.now().strftime('%Y%m%d_%H%M%S')))
-                
+                temp_filename = f"{safe_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                driver.get(response_url)
+                with open(temp_filename, "w", encoding="utf-8") as f:
+                    f.write(driver.page_source)
 
             if "/maps/preview/place" not in response_url:
                 continue
@@ -267,15 +280,6 @@ def scrape_place(driver, url, original_query):
         except Exception as e:
             logging.warning(f"Error processing performance log: {e}")
     
-    wait = WebDriverWait(driver, 10)
-    place_name = "Unknown"
-    try:
-        h1 = wait.until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
-        place_name = h1.text
-        logging.info(f"Place Name: {place_name}")
-    except:
-        pass
-
     driver.execute_script("window.scrollBy(0, 500);")
     time.sleep(3)
 
@@ -307,7 +311,6 @@ def scrape_place(driver, url, original_query):
     #    logging.info(f"[{i}] {item}")
 
     #html = driver.page_source
-    safe_name = re.sub(r'[\\/*?:"<>|]', "_", place_name)
 
     with open(f"debug_{safe_name}.html", "w", encoding="utf-8") as f:
         f.write(driver.page_source)
@@ -484,8 +487,8 @@ def main(queries=None):
             if len(popularlist) > 0:
                 cursor.executemany(popular_times_sql, popularlist)
 
-            #if busystatus is not None:
-            #    cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
+            if busystatus is not None:
+                cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
         save_weather_data_to_snowflake(conn, call_id)
 
         conn.commit()
