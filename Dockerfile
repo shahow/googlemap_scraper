@@ -133,6 +133,8 @@ print("ChromeDriver installed:")
 print("/opt/chromedriver/chromedriver")
 PY
 
+RUN chmod +x /opt/chrome/chrome && chmod +x /opt/chromedriver/chromedriver
+
 # --------------------------------------------------
 # Install uv
 # --------------------------------------------------
