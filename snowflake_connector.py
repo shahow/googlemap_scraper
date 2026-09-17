@@ -1,31 +1,49 @@
 
 import snowflake.connector
-from snowflake.snowpark import Session
-from dotenv import load_dotenv
-import os
+#from snowflake.snowpark import Session
+import json
+import boto3
 # Establish a connection
 #load_dotenv()  # Load environment variables from .env file
-def getConn():
-    load_dotenv( dotenv_path=r"C:\Users\User\gmap_test\.env")
-    account = os.getenv("SNOWFLAKE_ACCOUNT")
-    token = os.getenv("SNOWFLAKE_SERVICE_AGENT_TOKEN")
 
-    connection_options = dict(
-        user='HOTSPOT_AGENT',#change to your snowflake username
-        password=token,
-        account=account,
-        warehouse='COMPUTE_WH',
-        database='GMAP_DB',
-        schema='PUBLIC'
+def load_aws_secrets(SecretId):
+    client = boto3.client(
+        service_name='secretsmanager',
+        region_name='us-east-2'
     )
-    role = os.getenv("SNOWFLAKE_ROLE")
-    if role:
-        connection_options["role"] = role
+    response = client.get_secret_value(
+        #SecretId='gmap_scraper/SNOWFLAKE_CONFIG'
+        SecretId='gmap_scraper/{0}'.format(SecretId)
+    )
+    secret_data = json.loads(response["SecretString"])
+    return secret_data
+
+
+
+def getConn():
+    client=boto3.client(
+        service_name='secretsmanager',
+        region_name='us-east-2'
+    )
+    response = client.get_secret_value(
+        SecretId='gmap_scraper/SNOWFLAKE_CONFIG'
+    )
+    connection_options = json.loads(response["SecretString"])
 
     conn = snowflake.connector.connect(**connection_options)
     cursor = conn.cursor()
-
+    try:
+        cursor.execute("SELECT CURRENT_VERSION(),CURRENT_WAREHOUSE(), CURRENT_DATABASE(), CURRENT_SCHEMA()")
+        print(cursor.fetchone())
+    except Exception as e:
+        print(f"Error executing query: {e}")
     cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
     return conn
 
-getConn()
+#getConn()
+print(load_aws_secrets("SNOWFLAKE_CONFIG"))
+acc=load_aws_secrets("CWA_APIKEY")
+
+print(load_aws_secrets("CWA_APIKEY"))
+account = acc.get("CWA_APIKEY")
+print(account)
