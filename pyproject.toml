@@ -1,0 +1,23 @@
+[project]
+name = "gmap-test"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "shahow", email = "shahow11@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pandas<3.0.0",
+    "selenium>=4.47.0",
+    "snowflake-connector-python[pandas]>=4.7.3",
+    "snowflake-snowpark-python>=1.54.0",
+    "webdriver-manager>=4.1.2",
+]
+
+[project.scripts]
+gmap-test = "gmap_test:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
