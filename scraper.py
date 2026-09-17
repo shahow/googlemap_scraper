@@ -193,10 +193,9 @@ def get_realtime_busy(driver):
 def scrape_place(driver, url, original_query):
     logging.info(f"Scraping place URL: {url}")
     driver.get(url)
-    #input("請手動確認 Chrome 畫面，按 Enter 繼續...")
-    time.sleep(5) # Wait for load
+    #time.sleep(5) # Wait for load
 
-    wait = WebDriverWait(driver, 10)
+    wait = WebDriverWait(driver, 15)
     place_name = "Unknown"
     try:
         h1 = wait.until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
@@ -206,37 +205,29 @@ def scrape_place(driver, url, original_query):
         pass
 
     safe_name = re.sub(r'[\\/*?:"<>|]', "_", place_name)
+    time.sleep(5)
 
     logs = driver.get_log("performance")
+
+    response_index = 0
+
     for entry in logs:
+
         try:
-            message = json.loads(entry["message"])["message"]
+            message = json.loads(
+                entry["message"]
+            )["message"]
 
             if message["method"] != "Network.responseReceived":
                 continue
-            
-            #logging.info(f"Processing performance log: {message}")
+
             response = message["params"]["response"]
+
             request_id = message["params"]["requestId"]
+
             response_url = response["url"]
 
-            if "/maps/preview/place" in response_url:
-                result = driver.execute_cdp_cmd(
-        "Network.getResponseBody",
-        {"requestId": request_id}
-             )
-
-                body = result.get("body", "")
-
-                print("URL:", response_url)
-                print("即時:", "即時" in body)
-                print("繁忙:", "繁忙" in body)
-                print("busy:", "busy" in body.lower())
-
-                temp_filename = f"{safe_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-                with open(temp_filename, "w", encoding="utf-8") as f:
-                    f.write(driver.page_source)
-
+            # 只處理 /maps/preview/place
             if "/maps/preview/place" not in response_url:
                 continue
 
@@ -246,40 +237,66 @@ def scrape_place(driver, url, original_query):
             )
 
             try:
+
                 result = driver.execute_cdp_cmd(
                     "Network.getResponseBody",
-                    {"requestId": request_id}
+                    {
+                        "requestId": request_id
+                    }
                 )
 
-                
-
-
-              
-                filename = os.path.join(
-                    "sponse_dir",
-                    f"{safe_name}.txt"
-                )
-
-                #with open(filename, "w", encoding="utf-8") as f:
-                #    f.write(body)
+                body = result.get("body", "")
 
                 logging.info(
-                    f"Saved place response: {filename} "
+                    f"Response body length: {len(body)}"
+                )
+
+                print("URL:", response_url)
+                print("即時:", "即時" in body)
+                print("繁忙:", "繁忙" in body)
+                print(
+                    "busy:",
+                    "busy" in body.lower()
+                )
+
+                # 儲存真正的 response body
+                temp_filename = (
+                    f"{safe_name}_"
+                    f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+                    f"{response_index}.txt"
+                )
+
+                with open(
+                    temp_filename,
+                    "w",
+                    encoding="utf-8"
+                ) as f:
+                    f.write(body)
+
+                logging.info(
+                    f"Saved place response: "
+                    f"{temp_filename} "
                     f"({len(body)} chars)"
                 )
 
                 response_index += 1
 
             except Exception as e:
+
                 logging.warning(
                     f"Could not get response body for "
                     f"{response_url}: {e}"
                 )
 
         except Exception as e:
-            logging.warning(f"Error processing performance log: {e}")
-    
-    driver.execute_script("window.scrollBy(0, 500);")
+
+            logging.warning(
+                f"Error processing performance log: {e}"
+            )
+
+    driver.execute_script(
+        "window.scrollBy(0, 500);"
+    )
     time.sleep(3)
 
     elements = driver.find_elements(
@@ -471,7 +488,7 @@ def main(queries=None):
                 for hour_data in popular_times.get(day_name, []):
                     hour = hour_data.get("hour")
                     occupancy = hour_data.get("occupancy")
-                    print(f"Day: {day_name}, Hour: {hour}, Occupancy: {occupancy}")
+                    #print(f"Day: {day_name}, Hour: {hour}, Occupancy: {occupancy}")
                     if not isinstance(hour, int) or not 0 <= hour <= 23:
                         continue
                     if not isinstance(occupancy, int) or not 0 <= occupancy <= 100:
@@ -489,9 +506,10 @@ def main(queries=None):
 
             if busystatus is not None:
                 cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
+        conn.commit()
         save_weather_data_to_snowflake(conn, call_id)
 
-        conn.commit()
+        
         logging.info("Imported %d popular-times rows into GMAP_DB.PUBLIC.location_busy", imported_rows)
     except Exception:
         conn.rollback()

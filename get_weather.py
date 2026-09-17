@@ -122,8 +122,9 @@ stockfilename =r'yahoo_stock_{0}.html'. format(datetime.now().strftime('%Y%m%d')
 """
 
 def save_weather_data_to_snowflake(connection, call_id):
-    load_dotenv( dotenv_path=r"C:\Users\User\gmap_test\.env")
-    account = os.getenv("CWA_APIKEY")
+    acc=sf.load_aws_secrets("CWA_APIKEY")
+    account = acc.get("CWA_APIKEY")
+
     url = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001'
     params = {    'Authorization': account,
     'format': 'JSON',
