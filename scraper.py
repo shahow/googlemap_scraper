@@ -231,9 +231,10 @@ def scrape_place(driver, url, original_query):
             if "/maps/preview/place" not in response_url:
                 continue
 
+            print("response_url:", response_url)
             logging.info(
                 f"Found /maps/preview/place: "
-                f"{response.status} {response_url}"
+                f"{response.get('status', 'unknown')} {response_url}"
             )
 
             try:
@@ -334,8 +335,8 @@ def scrape_place(driver, url, original_query):
     logging.info("========== END RAW BUSY DATA ==========")
     elements = driver.find_elements(
     By.CSS_SELECTOR,
-    "div[role='img']"
-)
+    "div[role='img']")
+    
     buttons = driver.find_elements(By.CSS_SELECTOR, "button.CsEnBe")
     #print("address: " + buttons[0].get_attribute("aria-label"))
     
@@ -507,7 +508,11 @@ def main(queries=None):
             if busystatus is not None:
                 cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
         conn.commit()
-        save_weather_data_to_snowflake(conn, call_id)
+        try:
+            save_weather_data_to_snowflake(conn, call_id)
+        except Exception:
+            logging.exception("Weather data collection failed")
+        #save_weather_data_to_snowflake(conn, call_id)
 
         
         logging.info("Imported %d popular-times rows into GMAP_DB.PUBLIC.location_busy", imported_rows)
