@@ -195,7 +195,7 @@ def scrape_place(driver, url, original_query):
     driver.get(url)
     #time.sleep(5) # Wait for load
 
-    wait = WebDriverWait(driver, 15)
+    wait = WebDriverWait(driver, 30)
     place_name = "Unknown"
     try:
         h1 = wait.until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
@@ -203,6 +203,25 @@ def scrape_place(driver, url, original_query):
         logging.info(f"Place Name: {place_name}")
     except Exception:
         pass
+    
+    try:
+        wait.until(
+        lambda d: any(
+            re.search(
+                r'\d+時的繁忙程度通常為\s*\d+%',
+                el.get_attribute("aria-label") or ""
+            )
+            for el in d.find_elements(
+                By.CSS_SELECTOR,
+                "div[role='img']"
+            )
+        )
+    )
+        logging.info("Busydata loaded.")
+    
+
+    except TimeoutException:
+        logging.warning("Busydata not loaded within 15 seconds.")
 
     safe_name = re.sub(r'[\\/*?:"<>|]', "_", place_name)
     time.sleep(5)
@@ -222,9 +241,7 @@ def scrape_place(driver, url, original_query):
                 continue
 
             response = message["params"]["response"]
-
             request_id = message["params"]["requestId"]
-
             response_url = response["url"]
 
             # 只處理 /maps/preview/place
