@@ -20,6 +20,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
@@ -30,6 +31,7 @@ DAYS = [ "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Su
 
 def get_driver():
     options = webdriver.ChromeOptions()
+    """
     # options.add_argument("--headless=new") 
     options.add_argument("--lang=en") 
     options.add_argument("--start-maximized")
@@ -39,10 +41,40 @@ def get_driver():
         "goog:loggingPrefs",
         {"performance": "ALL"}
     )
+
+    """
+    options.binary_location = os.environ["CHROME_BIN"]
     
-    service = ChromeService(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-    return driver
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    
+    options.add_argument("--window-size=1920,1080")
+    
+    # Chrome 在 Lambda container 中使用 /tmp
+    options.add_argument("--user-data-dir=/tmp/chrome-profile")
+    
+    # Debug
+    options.add_argument("--enable-logging")
+    options.add_argument("--v=1")
+    
+    service = ChromeService(        executable_path=os.environ["CHROMEDRIVER"],log_output="/tmp/chromedriver.log")
+    
+    driver = None
+    try:
+        service = ChromeService(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+        return driver
+    except Exception as e:
+        try:
+            with open("/tmp/chromedriver.log", "r") as f:
+                print(f.read())
+        except Exception as log_error:
+            print("Cannot read ChromeDriver log:", log_error)
+        finally:
+            return None    
+   
 def parse_popular_times_v2(htmltext,filename):
     elements = driver.find_elements(
     By.CSS_SELECTOR,
