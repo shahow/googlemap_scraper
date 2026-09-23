@@ -56,7 +56,7 @@ def get_driver():
     # Debug
     options.add_argument("--enable-logging")
     options.add_argument("--v=1")
-
+    
     options.set_capability(
             "goog:loggingPrefs",
             {"performance": "ALL"}
@@ -367,7 +367,7 @@ def scrape_place(driver, url, original_query):
                 f"Error processing performance log: {e}"
             )
 
-    del log
+    del logs
     driver.execute_script(
         "window.scrollBy(0, 500);"
     )
@@ -625,7 +625,8 @@ def lambda_handler(event, context):
 if __name__ == "__main__":
     event = {
         "queries": [
-            "Starbucks Taipei",
+            "東喜堂花園茶館",
+            #"Starbucks Taipei",
          #   "Coffee shop Taichung"
         ]
     }
