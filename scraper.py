@@ -36,10 +36,7 @@ def get_driver():
     options.add_argument("--start-maximized")
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-    options.set_capability(
-        "goog:loggingPrefs",
-        {"performance": "ALL"}
-    )
+    
     """    
     options.binary_location = os.environ["CHROME_BIN"]
     
@@ -57,11 +54,19 @@ def get_driver():
     options.add_argument("--enable-logging")
     options.add_argument("--v=1")
 
+    options.set_capability(
+            "goog:loggingPrefs",
+            {"performance": "ALL"}
+        )
+    options.page_load_strategy = "eager"
+
     #service = ChromeService(ChromeDriverManager().install())
     service = ChromeService(
             executable_path=os.environ["CHROMEDRIVER"],
             log_output="/tmp/chromedriver.log"
         )
+
+    
     driver=None
 
     try:
@@ -82,6 +87,9 @@ def get_driver():
                 service=service,
                 options=options
             )
+        
+        driver.set_page_load_timeout(60)
+        driver.set_script_timeout(30)
     
     except Exception as e:
     
@@ -101,19 +109,6 @@ def get_driver():
     
     #driver = webdriver.Chrome(service=service, options=options)
     return driver
-def parse_popular_times_v2(htmltext,filename):
-    elements = driver.find_elements(
-    By.CSS_SELECTOR,
-    "div[role='img']"
-    )
-    with open(filename, "w", encoding="utf-8") as f:
-        for element in elements:
-            aria = element.get_attribute("aria-label")
-            if aria:
-                f.write(aria + "\n")
-
-    print(len(elements))
-    return elements
 
 def parse_popular_times(flat_data):
     """
