@@ -41,9 +41,10 @@ def getConn():
     return conn
 
 #getConn()
-print(load_aws_secrets("SNOWFLAKE_CONFIG"))
-acc=load_aws_secrets("CWA_APIKEY")
+if __name__ == "__main__":
+    print(load_aws_secrets("SNOWFLAKE_CONFIG"))
+    acc=load_aws_secrets("CWA_APIKEY")
 
-print(load_aws_secrets("CWA_APIKEY"))
-account = acc.get("CWA_APIKEY")
-print(account)
+    print(load_aws_secrets("CWA_APIKEY"))
+    account = acc.get("CWA_APIKEY")
+    print(account)
