@@ -44,6 +44,9 @@ def get_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
+
+    options.add_argument("--lang=zh-TW")
+    options.add_argument("--accept-lang=zh-TW,zh")
     
     options.add_argument("--window-size=1920,1080")
     
@@ -65,7 +68,6 @@ def get_driver():
             executable_path=os.environ["CHROMEDRIVER"],
             log_output="/tmp/chromedriver.log"
         )
-
     
     driver=None
 
@@ -365,6 +367,7 @@ def scrape_place(driver, url, original_query):
                 f"Error processing performance log: {e}"
             )
 
+    del log
     driver.execute_script(
         "window.scrollBy(0, 500);"
     )
@@ -490,6 +493,8 @@ def main(queries=None):
                 except Exception as e:
                     logging.error(f"Error scraping {url}: {e}")
                     continue
+                #finally:
+                #    driver.quit()
                     
     except Exception as e:
         logging.error(f"Fatal error: {e}")
