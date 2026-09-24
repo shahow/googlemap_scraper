@@ -216,7 +216,6 @@ def save_weather_data_to_snowflake(connection, call_id):
 
     taichung_data = []
     for location in locations:
-        print(location)
         record = {
         field['id']: get_nested_value(
             location,

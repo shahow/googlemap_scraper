@@ -12,6 +12,7 @@ import pandas as pd
 from requests import request
 import requests
 #import mymariadb as MariaDB
+from busyparser import parse_busydata
 import snowflake_connector as sf
 from get_weather import save_weather_data_to_snowflake,save_txt
 from selenium import webdriver
@@ -28,16 +29,159 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 DAYS = [ "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
+def get_driver():
+    import os
+    import traceback
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service as ChromeService
+
+    options = webdriver.ChromeOptions()
+
+    # 判斷是否在 AWS Lambda Container
+    is_aws = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+
+    if is_aws:
+        # ==========================================
+        # AWS Lambda / Docker
+        # ==========================================
+        print("Environment: AWS Lambda")
+
+        options.binary_location = os.environ["CHROME_BIN"]
+
+        options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+
+        options.add_argument("--lang=zh-TW")
+        options.add_argument("--accept-lang=zh-TW,zh")
+        options.add_argument("--window-size=1920,1080")
+
+        # Chrome 在 Lambda container 使用 /tmp
+        options.add_argument("--user-data-dir=/tmp/chrome-profile")
+
+        # Debug
+        options.add_argument("--enable-logging")
+        options.add_argument("--v=1")
+
+        options.set_capability(
+            "goog:loggingPrefs",
+            {"performance": "ALL"}
+        )
+
+        options.page_load_strategy = "eager"
+
+        service = ChromeService(
+            executable_path=os.environ["CHROMEDRIVER"],
+            log_output="/tmp/chromedriver.log"
+        )
+
+    else:
+        # ==========================================
+        # Windows
+        # ==========================================
+        print("Environment: Windows / Local")
+
+        options.add_argument("--lang=zh-TW")
+        options.add_argument("--accept-lang=zh-TW,zh")
+        options.add_argument("--start-maximized")
+
+        # Windows 不需要 Lambda 的 headless
+        # 如果想測試 headless，可以打開
+        # options.add_argument("--headless=new")
+
+        options.add_argument(
+            "user-agent=Mozilla/5.0 "
+            "(Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/153.0.0.0 Safari/537.36"
+        )
+
+        options.set_capability(
+            "goog:loggingPrefs",
+            {"performance": "ALL"}
+        )
+
+        options.page_load_strategy = "eager"
+
+        # Windows 使用 PATH 裡的 chromedriver
+        service = ChromeService()
+
+    # ==========================================
+    # 啟動 Chrome
+    # ==========================================
+
+    driver = None
+
+    try:
+        if is_aws:
+            print("Chrome binary:", os.environ["CHROME_BIN"])
+            print("ChromeDriver:", os.environ["CHROMEDRIVER"])
+
+            print(
+                "Chrome exists:",
+                os.path.exists(os.environ["CHROME_BIN"])
+            )
+
+            print(
+                "ChromeDriver exists:",
+                os.path.exists(os.environ["CHROMEDRIVER"])
+            )
+
+        driver = webdriver.Chrome(
+            service=service,
+            options=options
+        )
+
+        driver.set_page_load_timeout(60)
+        driver.set_script_timeout(30)
+
+        print("Chrome started successfully")
+
+        return driver
+
+    except Exception as e:
+        print("ERROR starting Chrome:")
+        print(str(e))
+
+        print("\nTRACEBACK:")
+        traceback.print_exc()
+
+        # Lambda 才讀 ChromeDriver log
+        if is_aws:
+            print("\nChromeDriver log:")
+
+            try:
+                with open("/tmp/chromedriver.log", "r") as f:
+                    print(f.read())
+            except Exception as log_error:
+                print(
+                    "Cannot read ChromeDriver log:",
+                    log_error
+                )
+
+        raise
+
+def log_memory(label):
+    if psutil:
+        process = psutil.Process(os.getpid())
+        mem = process.memory_info().rss / 1024 / 1024
+        logging.info(f"[MEM] {label}: Python RSS={mem:.1f} MB")
+"""
 def get_driver():
     options = webdriver.ChromeOptions()
-    """
+
     # options.add_argument("--headless=new") 
     options.add_argument("--lang=en") 
     options.add_argument("--start-maximized")
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
-    
-    """    
+  
     options.binary_location = os.environ["CHROME_BIN"]
     
     options.add_argument("--headless=new")
@@ -64,6 +208,7 @@ def get_driver():
     options.page_load_strategy = "eager"
 
     #service = ChromeService(ChromeDriverManager().install())
+    
     service = ChromeService(
             executable_path=os.environ["CHROMEDRIVER"],
             log_output="/tmp/chromedriver.log"
@@ -109,9 +254,9 @@ def get_driver():
         except Exception as log_error:
             print("Cannot read ChromeDriver log:", log_error)
     
-    #driver = webdriver.Chrome(service=service, options=options)
+    driver = webdriver.Chrome(service=service, options=options)
     return driver
-
+"""
 def parse_popular_times(flat_data):
     """
     Parses a list of strings like "55% busy at 12 PM." into structured data.
@@ -247,7 +392,10 @@ def get_realtime_busy(driver):
 
 def scrape_place(driver, url, original_query):
     logging.info(f"Scraping place URL: {url}")
+    log_memory("before driver.get")
     driver.get(url)
+    log_memory("after driver.get")
+    
     #time.sleep(5) # Wait for load
 
     wait = WebDriverWait(driver, 30)
@@ -258,7 +406,7 @@ def scrape_place(driver, url, original_query):
         logging.info(f"Place Name: {place_name}")
     except Exception:
         pass
-    
+    """
     try:
         wait.until(
         lambda d: any(
@@ -273,11 +421,10 @@ def scrape_place(driver, url, original_query):
         )
     )
         logging.info("Busydata loaded.")
-    
 
     except TimeoutException:
         logging.warning("Busydata not loaded within 15 seconds.")
-
+    """
     safe_name = re.sub(r'[\\/*?:"<>|]', "_", place_name)
     time.sleep(5)
 
@@ -286,7 +433,6 @@ def scrape_place(driver, url, original_query):
     response_index = 0
 
     for entry in logs:
-
         try:
             message = json.loads(
                 entry["message"]
@@ -310,14 +456,41 @@ def scrape_place(driver, url, original_query):
             )
 
             try:
-
+                log_memory("before getResponseBody")
                 result = driver.execute_cdp_cmd(
                     "Network.getResponseBody",
                     {
                         "requestId": request_id
                     }
                 )
+                #add at 09241332 start
+                body = driver.execute_cdp_cmd(
+                     "Network.getResponseBody",
+                     {"requestId": request_id}
+                )["body"]
+                logging.info(f"Body:{body}")
+                busydata = parse_busydata(body)
+                temp_filename = (
+                    f"{safe_name}_"
+                    f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    f".txt"
+                                )
+                
+                with open(
+                                    temp_filename,
+                                    "w",
+                                    encoding="utf-8"
+                ) as f:
+                                    f.write(body)
 
+                logging.info(f"Busydata rows: {len(busydata)}")
+
+                for row in busydata:
+                    logging.info(row)
+                #add at 09241332 end    
+
+                
+                log_memory("after getResponseBody")
                 body = result.get("body", "")
 
                 logging.info(
@@ -325,6 +498,7 @@ def scrape_place(driver, url, original_query):
                 )
 
                 print("URL:", response_url)
+
                 print("即時:", "即時" in body)
                 print("繁忙:", "繁忙" in body)
                 print(
@@ -333,6 +507,7 @@ def scrape_place(driver, url, original_query):
                 )
 
                 # 儲存真正的 response body
+                """
                 temp_filename = (
                     f"{safe_name}_"
                     f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
@@ -345,13 +520,13 @@ def scrape_place(driver, url, original_query):
                     encoding="utf-8"
                 ) as f:
                     f.write(body)
-
+                
                 logging.info(
                     f"Saved place response: "
                     f"{temp_filename} "
                     f"({len(body)} chars)"
                 )
-
+                """
                 response_index += 1
 
             except Exception as e:
@@ -372,7 +547,7 @@ def scrape_place(driver, url, original_query):
         "window.scrollBy(0, 500);"
     )
     time.sleep(3)
-
+    
     elements = driver.find_elements(
         By.XPATH,
         "//*[contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'busy')]"
@@ -406,6 +581,7 @@ def scrape_place(driver, url, original_query):
         f.write(driver.page_source)
 
     logging.info("========== END RAW BUSY DATA ==========")
+    logging.info("========== START GET PLACE INFO========")
     elements = driver.find_elements(
     By.CSS_SELECTOR,
     "div[role='img']")
@@ -441,6 +617,7 @@ def scrape_place(driver, url, original_query):
             rating = re.search(r"(\d+(?:\.\d+)?)", text)
             star = rating.group(1) if rating else ""
             #print("star: " + star)
+        #logging.info("Start get single busy data")
         m = re.search(r'(\d+)時的繁忙程度通常為\s*(\d+)%', text)
 
         if m:
@@ -455,8 +632,8 @@ def scrape_place(driver, url, original_query):
                     "raw": text,
                 })
             previous_hour = hour
-    #cursor.close()
-    #conn.close()
+        #logging.info("End get single busy data")
+
     busystatus = get_realtime_busy(driver)
     
     return {

@@ -18,8 +18,6 @@ def load_aws_secrets(SecretId):
     secret_data = json.loads(response["SecretString"])
     return secret_data
 
-
-
 def getConn():
     client=boto3.client(
         service_name='secretsmanager',
@@ -32,11 +30,13 @@ def getConn():
 
     conn = snowflake.connector.connect(**connection_options)
     cursor = conn.cursor()
+    """
     try:
         cursor.execute("SELECT CURRENT_VERSION(),CURRENT_WAREHOUSE(), CURRENT_DATABASE(), CURRENT_SCHEMA()")
         print(cursor.fetchone())
     except Exception as e:
         print(f"Error executing query: {e}")
+    """
     cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
     return conn
 
