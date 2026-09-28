@@ -501,13 +501,21 @@ def scrape_place(driver, url, original_query):
                     "busy" in body.lower()
                 )
 
-                # 儲存真正的 response body
-                """
                 temp_filename = (
-                    f"{safe_name}_"
+                                    f"{safe_name}_"
+                                    f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+                                    f"{response_index}.txt"
+                                )
+                is_aws = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+                if is_aws:
+                    temp_filename =  (
+                    f"/tmp/{safe_name}_"
                     f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
                     f"{response_index}.txt"
-                )
+                    )
+                # 儲存真正的 response body
+                """
+                
 
                 with open(
                     temp_filename,
