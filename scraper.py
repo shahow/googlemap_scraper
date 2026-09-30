@@ -486,6 +486,7 @@ def scrape_place(driver, url, original_query):
 
                 
                 log_memory("after getResponseBody")
+                """
                 body = result.get("body", "")
 
                 logging.info(
@@ -500,7 +501,7 @@ def scrape_place(driver, url, original_query):
                     "busy:",
                     "busy" in body.lower()
                 )
-
+                """
                 temp_filename = (
                                     f"{safe_name}_"
                                     f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
@@ -514,9 +515,7 @@ def scrape_place(driver, url, original_query):
                     f"{response_index}.txt"
                     )
                 # 儲存真正的 response body
-                """
-                
-
+                print(temp_filename)
                 with open(
                     temp_filename,
                     "w",
@@ -529,7 +528,7 @@ def scrape_place(driver, url, original_query):
                     f"{temp_filename} "
                     f"({len(body)} chars)"
                 )
-                """
+                
                 response_index += 1
 
             except Exception as e:
