@@ -464,44 +464,13 @@ def scrape_place(driver, url, original_query):
                 )["body"]
                 logging.info(f"body size={len(body):,}")
                 busydata = parse_busydata(body)
-                """
-                temp_filename = (
-                    f"{safe_name}_"
-                    f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                    f".txt"
-                                )
                 
-                with open(
-                                    temp_filename,
-                                    "w",
-                                    encoding="utf-8"
-                ) as f:
-                                    f.write(body)
-
-                logging.info(f"Busydata rows: {len(busydata)}")
-                """
                 for row in busydata:
                     logging.info(row)
                 #add at 09241332 end    
-
                 
                 log_memory("after getResponseBody")
-                """
-                body = result.get("body", "")
-
-                logging.info(
-                    f"Response body length: {len(body)}"
-                )
-
-                print("URL:", response_url)
-
-                print("即時:", "即時" in body)
-                print("繁忙:", "繁忙" in body)
-                print(
-                    "busy:",
-                    "busy" in body.lower()
-                )
-                """
+                
                 temp_filename = (
                                     f"{safe_name}_"
                                     f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
