@@ -464,6 +464,14 @@ def scrape_place(driver, url, original_query):
             request_id = message["params"]["requestId"]
             response_url = response["url"]
 
+            #ec2 and docker test
+            print("READY:", driver.execute_script("return document.readyState"))
+            print("JS:", driver.execute_script("return 1 + 1"))
+            print("BODY:", driver.execute_script("return document.body.innerHTML.length"))
+            print("RESOURCES:", driver.execute_script(
+                  "return performance.getEntriesByType('resource').length"
+            ))
+
             # 只處理 /maps/preview/place
             if "/maps/preview/place" not in response_url:
                 continue
