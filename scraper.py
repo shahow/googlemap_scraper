@@ -1,6 +1,7 @@
 from ast import Import
 from datetime import datetime
 import os
+import platform
 import time
 import json
 import logging
@@ -33,13 +34,8 @@ try:
     import psutil
 except ImportError:
     psutil = None
-
+"""
 def get_driver():
-    import os
-    import traceback
-    from selenium import webdriver
-    from selenium.webdriver.chrome.service import Service as ChromeService
-
     options = webdriver.ChromeOptions()
 
     # 判斷是否在 AWS Lambda Container
@@ -93,7 +89,7 @@ def get_driver():
 
         # Windows 不需要 Lambda 的 headless
         # 如果想測試 headless，可以打開
-        # options.add_argument("--headless=new")
+        options.add_argument("--headless=new")
 
         options.add_argument(
             "user-agent=Mozilla/5.0 "
@@ -167,96 +163,119 @@ def get_driver():
                 )
 
         raise
+"""
+
+def get_driver():
+    options = webdriver.ChromeOptions()
+
+    system = platform.system()
+    is_lambda = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+
+    # =====================================================
+    # AWS Lambda
+    # =====================================================
+    if is_lambda:
+        print("Environment: AWS Lambda")
+
+        options.binary_location = os.environ["CHROME_BIN"]
+
+        options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+
+        options.add_argument("--lang=zh-TW")
+        options.add_argument("--accept-lang=zh-TW,zh")
+        options.add_argument("--window-size=1920,1080")
+
+        options.add_argument("--user-data-dir=/tmp/chrome-profile")
+
+        options.add_argument("--enable-logging")
+        options.add_argument("--v=1")
+
+        options.set_capability(
+            "goog:loggingPrefs",
+            {"performance": "ALL"}
+        )
+
+        options.page_load_strategy = "eager"
+
+        service = ChromeService(
+            executable_path=os.environ["CHROMEDRIVER"],
+            log_output="/tmp/chromedriver.log"
+        )
+
+    # =====================================================
+    # Linux EC2 / Docker
+    # =====================================================
+    elif system == "Linux":
+        print("Environment: Linux / EC2 / Docker")
+
+        options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+
+        options.add_argument("--lang=zh-TW")
+        options.add_argument("--accept-lang=zh-TW,zh")
+        options.add_argument("--window-size=1920,1080")
+
+        # 先跟 Windows 成功環境保持一致
+        options.add_argument(
+            "user-agent=Mozilla/5.0 "
+            "(Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/153.0.0.0 Safari/537.36"
+        )
+
+        options.set_capability(
+            "goog:loggingPrefs",
+            {"performance": "ALL"}
+        )
+
+        options.page_load_strategy = "eager"
+
+        service = ChromeService()
+
+    # =====================================================
+    # Windows
+    # =====================================================
+    else:
+        print("Environment: Windows / Local")
+
+        options.add_argument("--lang=zh-TW")
+        options.add_argument("--accept-lang=zh-TW,zh")
+        options.add_argument("--start-maximized")
+
+        options.add_argument(
+            "user-agent=Mozilla/5.0 "
+            "(Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/153.0.0.0 Safari/537.36"
+        )
+
+        options.set_capability(
+            "goog:loggingPrefs",
+            {"performance": "ALL"}
+        )
+
+        options.page_load_strategy = "eager"
+
+        service = ChromeService()
+
+    return webdriver.Chrome(
+        service=service,
+        options=options
+    )
 
 def log_memory(label):
     if psutil:
         process = psutil.Process(os.getpid())
         mem = process.memory_info().rss / 1024 / 1024
         logging.info(f"[MEM] {label}: Python RSS={mem:.1f} MB")
-"""
-def get_driver():
-    options = webdriver.ChromeOptions()
 
-    # options.add_argument("--headless=new") 
-    options.add_argument("--lang=en") 
-    options.add_argument("--start-maximized")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-  
-    options.binary_location = os.environ["CHROME_BIN"]
-    
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-
-    options.add_argument("--lang=zh-TW")
-    options.add_argument("--accept-lang=zh-TW,zh")
-    
-    options.add_argument("--window-size=1920,1080")
-    
-    # Chrome 在 Lambda container 中使用 /tmp
-    options.add_argument("--user-data-dir=/tmp/chrome-profile")
-    
-    # Debug
-    options.add_argument("--enable-logging")
-    options.add_argument("--v=1")
-    
-    options.set_capability(
-            "goog:loggingPrefs",
-            {"performance": "ALL"}
-        )
-    options.page_load_strategy = "eager"
-
-    #service = ChromeService(ChromeDriverManager().install())
-    
-    service = ChromeService(
-            executable_path=os.environ["CHROMEDRIVER"],
-            log_output="/tmp/chromedriver.log"
-        )
-    
-    driver=None
-
-    try:
-        print("Chrome binary:", os.environ["CHROME_BIN"])
-        print("ChromeDriver:", os.environ["CHROMEDRIVER"])
-    
-        print(
-                "Chrome exists:",
-                os.path.exists(os.environ["CHROME_BIN"])
-            )
-    
-        print(
-                "ChromeDriver exists:",
-                os.path.exists(os.environ["CHROMEDRIVER"])
-            )
-    
-        driver = webdriver.Chrome(
-                service=service,
-                options=options
-            )
-        
-        driver.set_page_load_timeout(60)
-        driver.set_script_timeout(30)
-    
-    except Exception as e:
-    
-        print("ERROR:")
-        print(str(e))
-    
-        print("\nTRACEBACK:")
-        traceback.print_exc()
-    
-        print("\nChromeDriver log:")
-    
-        try:
-            with open("/tmp/chromedriver.log", "r") as f:
-                print(f.read())
-        except Exception as log_error:
-            print("Cannot read ChromeDriver log:", log_error)
-    
-    driver = webdriver.Chrome(service=service, options=options)
-    return driver
-"""
 def parse_popular_times(flat_data):
     """
     Parses a list of strings like "55% busy at 12 PM." into structured data.
