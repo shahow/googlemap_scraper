@@ -34,6 +34,7 @@ try:
     import psutil
 except ImportError:
     psutil = None
+call_id = str(uuid.uuid4())
 """
 def get_driver():
     options = webdriver.ChromeOptions()
@@ -463,7 +464,7 @@ def scrape_place(driver, url, original_query):
             response = message["params"]["response"]
             request_id = message["params"]["requestId"]
             response_url = response["url"]
-
+            """
             #ec2 and docker test
             print("READY:", driver.execute_script("return document.readyState"))
             print("JS:", driver.execute_script("return 1 + 1"))
@@ -471,7 +472,7 @@ def scrape_place(driver, url, original_query):
             print("RESOURCES:", driver.execute_script(
                   "return performance.getEntriesByType('resource').length"
             ))
-
+            """
             # 只處理 /maps/preview/place
             if "/maps/preview/place" not in response_url:
                 continue
@@ -688,7 +689,7 @@ def main(queries=None):
     cursor = conn.cursor()
     cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
     try:
-        call_id = str(uuid.uuid4())
+        
         cursor.execute("""
             INSERT INTO GMAP_DB.PUBLIC.CALL_LOG (call_id)
             VALUES (%s)
@@ -791,6 +792,9 @@ def lambda_handler(event, context):
         }
 
     results = main(queries)
+    #check location_busy table
+    
+
 
     return {
         "statusCode": 200,
@@ -798,6 +802,7 @@ def lambda_handler(event, context):
     }
 
 if __name__ == "__main__":
+    """
     event = {
         "queries": [
             "東喜堂花園茶館",
@@ -805,5 +810,29 @@ if __name__ == "__main__":
          #   "Coffee shop Taichung"
         ]
     }
+    """
+    event = {}
+    locations = []
+    conn = sf.getConn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT NAME FROM GMAP_DB.PUBLIC.LOCATION;")
+    for records in cursor.fetchall():
+        locations.append(records[0])
+    event["queries"] = locations
+    cursor.close()
+    conn.close()
 
-    lambda_handler(event, None)
+    seen = set()
+    duplicates = []
+
+    for a in event["queries"]:
+        if a in seen:
+            duplicates.append(a)
+            print("這個元素重複了（被 set 濾掉的其中之一）: " + str(a))
+        else:
+            seen.add(a)
+   
+
+    #print(event)
+    #lambda_handler(event, None)
+
