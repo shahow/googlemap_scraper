@@ -28,7 +28,7 @@ from selenium.common.exceptions import TimeoutException, WebDriverException
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-DAYS = [ "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+DAYS = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 try:
     import psutil
@@ -410,6 +410,32 @@ def get_realtime_busy(driver):
     except Exception:
         return None
 
+
+def fetch_response_body_safely(driver, request_id, response_url):
+    try:
+        return driver.execute_cdp_cmd(
+            "Network.getResponseBody",
+            {"requestId": request_id}
+        )["body"]
+    except Exception as e:
+        error_text = str(e).lower()
+        ignore_patterns = (
+            "no resource with given identifier found",
+            "failed to load response body",
+            "response body is unavailable",
+            "response not found",
+            "request is not available",
+        )
+        if any(pattern in error_text for pattern in ignore_patterns):
+            logging.debug(
+                "Skipping unavailable response body for %s: %s",
+                response_url,
+                e,
+            )
+            return None
+        raise
+
+
 def scrape_place(driver, url, original_query):
     logging.info(f"Scraping place URL: {url}")
     log_memory("before driver.get")
@@ -446,12 +472,13 @@ def scrape_place(driver, url, original_query):
         logging.warning("Busydata not loaded within 15 seconds.")
     """
     safe_name = re.sub(r'[\\/*?:"<>|]', "_", place_name)
-    time.sleep(5)
+    time.sleep(8)
 
     logs = driver.get_log("performance")
 
     response_index = 0
-
+    busydata = []
+    google_place_id = None
     for entry in logs:
         try:
             message = json.loads(
@@ -473,11 +500,13 @@ def scrape_place(driver, url, original_query):
                   "return performance.getEntriesByType('resource').length"
             ))
             """
+            
             # 只處理 /maps/preview/place
             if "/maps/preview/place" not in response_url:
                 continue
 
             print("response_url:", response_url)
+            print("request_id outter:", request_id)
             logging.info(
                 f"Found /maps/preview/place: "
                 f"{response.get('status', 'unknown')} {response_url}"
@@ -485,33 +514,45 @@ def scrape_place(driver, url, original_query):
 
             try:
                 log_memory("before getResponseBody")
-                #add at 09241332 start
-                body = driver.execute_cdp_cmd(
-                     "Network.getResponseBody",
-                     {"requestId": request_id}
-                )["body"]
+                print("request_id in try: " + request_id)
+                body = fetch_response_body_safely(driver, request_id, response_url)
+                if body is None:
+                    continue
+
                 logging.info(f"body size={len(body):,}")
                 busydata = parse_busydata(body)
-                
+
+                place_id_match = re.search(
+                    r'placeid(?:=|\\u003d)(ChIJ[A-Za-z0-9_-]+)',
+                    body
+                )
+
+                if place_id_match:
+                    google_place_id = place_id_match.group(1)
+                else:
+                    google_place_id = None
+
+                print(f"google_place_id: {google_place_id}")
+                print(f"busydata: {busydata}")
+
                 for row in busydata:
                     logging.info(row)
-                #add at 09241332 end    
-                
+
                 log_memory("after getResponseBody")
-                
+
                 temp_filename = (
-                                    f"{safe_name}_"
-                                    f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
-                                    f"{response_index}.txt"
-                                )
-                is_aws = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
-                if is_aws:
-                    temp_filename =  (
-                    f"/tmp/{safe_name}_"
+                    f"{safe_name}_"
                     f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
                     f"{response_index}.txt"
+                )
+                is_aws = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+                if is_aws:
+                    temp_filename = (
+                        f"/tmp/{safe_name}_"
+                        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+                        f"{response_index}.txt"
                     )
-                # 儲存真正的 response body
+
                 print(temp_filename)
                 with open(
                     temp_filename,
@@ -519,19 +560,18 @@ def scrape_place(driver, url, original_query):
                     encoding="utf-8"
                 ) as f:
                     f.write(body)
-                
+
                 logging.info(
                     f"Saved place response: "
                     f"{temp_filename} "
                     f"({len(body)} chars)"
                 )
-                
+
                 response_index += 1
 
             except Exception as e:
-
                 logging.warning(
-                    f"Could not get response body for "
+                    f"Could not process response body for "
                     f"{response_url}: {e}"
                 )
 
@@ -606,9 +646,13 @@ def scrape_place(driver, url, original_query):
     print("longitude: " + longitude)
 
     star = ""
+    print("busydata: " + str(busydata))
+    print("google_place_id: " + str(google_place_id))
+    """
     busydata = {day: [] for day in DAYS}
     day_index = 0
     previous_hour = None
+    """
     for a in elements:
         text = a.get_attribute("aria-label") or ""
         #print("this is the aria-label: " + text)
@@ -617,6 +661,7 @@ def scrape_place(driver, url, original_query):
             star = rating.group(1) if rating else ""
             #print("star: " + star)
         #logging.info("Start get single busy data")
+        """
         m = re.search(r'(\d+)時的繁忙程度通常為\s*(\d+)%', text)
 
         if m:
@@ -631,9 +676,13 @@ def scrape_place(driver, url, original_query):
                     "raw": text,
                 })
             previous_hour = hour
+        """
         #logging.info("End get single busy data")
-
+    
     busystatus = get_realtime_busy(driver)
+    print("busystatus: " + str(busystatus))
+    print("address: " + buttons[0].get_attribute("aria-label") if buttons else "")
+
     
     return {
         "query": original_query,
@@ -644,7 +693,8 @@ def scrape_place(driver, url, original_query):
         "star": star,
         "address": buttons[0].get_attribute("aria-label") if buttons else "",
         "popular_times": busydata,
-        "busystatus": busystatus
+        "busystatus": busystatus,
+        "google_place_id": google_place_id
     }
 
 def main(queries=None):
@@ -696,13 +746,15 @@ def main(queries=None):
         """, (call_id,))
 
         location_sql = """
-            INSERT INTO GMAP_DB.PUBLIC.location (name, address, latitude, longitude,star)
-            SELECT %s, %s, %s, %s, %s
+            INSERT INTO GMAP_DB.PUBLIC.location (call_id,name, address, latitude, longitude, google_place_id)
+            SELECT %s, %s, %s, %s, %s,%s 
             WHERE NOT EXISTS (
                 SELECT 1 FROM GMAP_DB.PUBLIC.location
-                WHERE name = %s AND address = %s AND latitude = %s AND longitude = %s AND star = %s
+                WHERE google_place_id = %s
+
             )
         """
+   # Optional: small delay to ensure the commit is processed
         popular_times_sql = """
             INSERT INTO GMAP_DB.PUBLIC.location_busy
                 (location_id,call_id, hour,busy,weekday)
@@ -722,31 +774,35 @@ def main(queries=None):
             longitude = entry.get("longitude") or None
             star = entry.get("star") or None
             busystatus = entry.get("busystatus") or None
+            google_place_id = entry.get("google_place_id") or None
 
             cursor.execute(location_sql, (
-                name, address, latitude, longitude, star,
-                name, address, latitude, longitude, star
+                call_id, name, address, latitude, longitude, google_place_id, google_place_id
+        
             ))
-
-            cursor.execute("SELECT id FROM GMAP_DB.PUBLIC.location WHERE name = %s AND address = %s AND latitude = %s AND longitude = %s", (name, address, latitude, longitude))
+           
+            cursor.execute("SELECT id FROM GMAP_DB.PUBLIC.location WHERE google_place_id = %s", (google_place_id,))
             location_id = cursor.fetchone()[0]
 
 
             popular_times = entry.get("popular_times") or {}
             print(f"Processing popular_times for {name}: {popular_times}")
             popularlist=[]
+
+            filtered_days = [d for d in popular_times if d.get("name") == day_name]
             
-            for day_name in DAYS:
-                for hour_data in popular_times.get(day_name, []):
+            for day_name in DAYS[1:7]:
+                filtered_days = [d for d in popular_times if d.get("weekday") == day_name]
+
+
+                for hour_data in filtered_days:
                     hour = hour_data.get("hour")
-                    occupancy = hour_data.get("occupancy")
+                    occupancy = hour_data.get("budy")
                     #print(f"Day: {day_name}, Hour: {hour}, Occupancy: {occupancy}")
                     if not isinstance(hour, int) or not 0 <= hour <= 23:
                         continue
                     if not isinstance(occupancy, int) or not 0 <= occupancy <= 100:
                         continue
-
-                    
                     popularlist.append((location_id, call_id, hour, occupancy, day_name))
 
             #for row in popularlist:
@@ -793,6 +849,8 @@ def lambda_handler(event, context):
 
     results = main(queries)
     #check location_busy table
+    busystatus_sql = "SELECT * FROM GMAP_DB.PUBLIC.BUSYSTATUS WHERE CALL_ID = '32175138-dfb7-4ad5-9aef-dff2b3c401fb';"
+
     
 
 
@@ -802,7 +860,7 @@ def lambda_handler(event, context):
     }
 
 if __name__ == "__main__":
-    """
+    
     event = {
         "queries": [
             "東喜堂花園茶館",
@@ -832,7 +890,7 @@ if __name__ == "__main__":
         else:
             seen.add(a)
    
-
+    """
     #print(event)
-    #lambda_handler(event, None)
+    lambda_handler(event, None)
 
