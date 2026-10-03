@@ -35,136 +35,6 @@ try:
 except ImportError:
     psutil = None
 call_id = str(uuid.uuid4())
-"""
-def get_driver():
-    options = webdriver.ChromeOptions()
-
-    # 判斷是否在 AWS Lambda Container
-    is_aws = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
-
-    if is_aws:
-        # ==========================================
-        # AWS Lambda / Docker
-        # ==========================================
-        print("Environment: AWS Lambda")
-
-        options.binary_location = os.environ["CHROME_BIN"]
-
-        options.add_argument("--headless=new")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-
-        options.add_argument("--lang=zh-TW")
-        options.add_argument("--accept-lang=zh-TW,zh")
-        options.add_argument("--window-size=1920,1080")
-
-        # Chrome 在 Lambda container 使用 /tmp
-        options.add_argument("--user-data-dir=/tmp/chrome-profile")
-
-        # Debug
-        options.add_argument("--enable-logging")
-        options.add_argument("--v=1")
-
-        options.set_capability(
-            "goog:loggingPrefs",
-            {"performance": "ALL"}
-        )
-
-        options.page_load_strategy = "eager"
-
-        service = ChromeService(
-            executable_path=os.environ["CHROMEDRIVER"],
-            log_output="/tmp/chromedriver.log"
-        )
-
-    else:
-        # ==========================================
-        # Windows
-        # ==========================================
-        print("Environment: Windows / Local")
-
-        options.add_argument("--lang=zh-TW")
-        options.add_argument("--accept-lang=zh-TW,zh")
-        options.add_argument("--start-maximized")
-
-        # Windows 不需要 Lambda 的 headless
-        # 如果想測試 headless，可以打開
-        options.add_argument("--headless=new")
-
-        options.add_argument(
-            "user-agent=Mozilla/5.0 "
-            "(Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 "
-            "(KHTML, like Gecko) "
-            "Chrome/153.0.0.0 Safari/537.36"
-        )
-
-        options.set_capability(
-            "goog:loggingPrefs",
-            {"performance": "ALL"}
-        )
-
-        options.page_load_strategy = "eager"
-
-        # Windows 使用 PATH 裡的 chromedriver
-        service = ChromeService()
-
-    # ==========================================
-    # 啟動 Chrome
-    # ==========================================
-
-    driver = None
-
-    try:
-        if is_aws:
-            print("Chrome binary:", os.environ["CHROME_BIN"])
-            print("ChromeDriver:", os.environ["CHROMEDRIVER"])
-
-            print(
-                "Chrome exists:",
-                os.path.exists(os.environ["CHROME_BIN"])
-            )
-
-            print(
-                "ChromeDriver exists:",
-                os.path.exists(os.environ["CHROMEDRIVER"])
-            )
-
-        driver = webdriver.Chrome(
-            service=service,
-            options=options
-        )
-
-        driver.set_page_load_timeout(60)
-        driver.set_script_timeout(30)
-
-        print("Chrome started successfully")
-
-        return driver
-
-    except Exception as e:
-        print("ERROR starting Chrome:")
-        print(str(e))
-
-        print("\nTRACEBACK:")
-        traceback.print_exc()
-
-        # Lambda 才讀 ChromeDriver log
-        if is_aws:
-            print("\nChromeDriver log:")
-
-            try:
-                with open("/tmp/chromedriver.log", "r") as f:
-                    print(f.read())
-            except Exception as log_error:
-                print(
-                    "Cannot read ChromeDriver log:",
-                    log_error
-                )
-
-        raise
-"""
 
 def get_driver():
     options = webdriver.ChromeOptions()
@@ -270,6 +140,32 @@ def get_driver():
         service=service,
         options=options
     )
+
+def getbusystr(body):
+    targetlist = [ '[1,[[','[2,[[','[3,[[','[4,[[','[5,[[','[6,[[']
+    firstquote = body.index('[[[7,')
+    print("firstquote:", firstquote)
+    #secondquote = body.index('[1,[[', firstquote)
+    #print("secondquote:", secondquote) 
+    #print(body[firstquote:secondquote]) 
+    firststart = -1
+    for a in targetlist:
+        if a in body:
+            start = body.index(a)
+            if firststart == -1:
+                firststart = start
+            end = body.find(']],', start) + 3
+            if end != -1:
+                print("start:", start, "end:", end)
+                busystr = body[start:end]
+                print("busystr:", busystr)
+                #save_txt(busystr)
+    end = body.find(']],', end) + 3
+    busystr = body[firststart:end]
+    print("busystr:", busystr)
+    return busystr
+
+
 
 def log_memory(label):
     if psutil:
@@ -520,7 +416,11 @@ def scrape_place(driver, url, original_query):
                     continue
 
                 logging.info(f"body size={len(body):,}")
-                busydata = parse_busydata(body)
+                logging.info(f"body preview={body[:2000]}")
+                busystr = getbusystr(body)
+                cnt=busystr.count(']],')
+                if cnt == 7:
+                    busydata = parse_busydata(body)
 
                 place_id_match = re.search(
                     r'placeid(?:=|\\u003d)(ChIJ[A-Za-z0-9_-]+)',
@@ -570,9 +470,9 @@ def scrape_place(driver, url, original_query):
                 response_index += 1
 
             except Exception as e:
-                logging.warning(
+                logging.exception(
                     f"Could not process response body for "
-                    f"{response_url}: {e}"
+                    f"{response_url}"
                 )
 
         except Exception as e:
@@ -761,6 +661,12 @@ def main(queries=None):
                 VALUES (%s, %s, %s, %s, %s)
         """
 
+        star_sql = """
+        INSERT INTO GMAP_DB.PUBLIC.location_star
+            (GOOGLE_PLACE_ID, call_id, star)        
+            VALUES (%s, %s, %s)
+            """
+
         busystatus_sql = """
             INSERT INTO GMAP_DB.PUBLIC.busystatus
                 (location_id, call_id, busystatus)   
@@ -776,44 +682,47 @@ def main(queries=None):
             busystatus = entry.get("busystatus") or None
             google_place_id = entry.get("google_place_id") or None
 
-            cursor.execute(location_sql, (
+            location_id = None
+            if google_place_id:
+                
+                cursor.execute(location_sql, (
                 call_id, name, address, latitude, longitude, google_place_id, google_place_id
-        
-            ))
+                ))
            
-            cursor.execute("SELECT id FROM GMAP_DB.PUBLIC.location WHERE google_place_id = %s", (google_place_id,))
-            location_id = cursor.fetchone()[0]
+                cursor.execute("SELECT id FROM GMAP_DB.PUBLIC.location WHERE google_place_id = %s", (google_place_id,))
+                location_id = cursor.fetchone()[0]
 
 
             popular_times = entry.get("popular_times") or {}
             print(f"Processing popular_times for {name}: {popular_times}")
             popularlist=[]
 
-            filtered_days = [d for d in popular_times if d.get("name") == day_name]
-            
-            for day_name in DAYS[1:7]:
-                filtered_days = [d for d in popular_times if d.get("weekday") == day_name]
-
+            print(f"location_id: {location_id}")
+            for dayindex in range(1, 8):
+                filtered_days = [d for d in popular_times if d.get("weekday") == dayindex]
+                print(f"Filtered days for {dayindex}: {filtered_days}")
 
                 for hour_data in filtered_days:
                     hour = hour_data.get("hour")
-                    occupancy = hour_data.get("budy")
+                    occupancy = hour_data.get("busy")
                     #print(f"Day: {day_name}, Hour: {hour}, Occupancy: {occupancy}")
                     if not isinstance(hour, int) or not 0 <= hour <= 23:
                         continue
                     if not isinstance(occupancy, int) or not 0 <= occupancy <= 100:
                         continue
-                    popularlist.append((location_id, call_id, hour, occupancy, day_name))
+                    popularlist.append((location_id, call_id, hour, occupancy, DAYS[dayindex]))
 
             #for row in popularlist:
             #    cursor.execute(popular_times_sql, row)
             #    imported_rows += 1
-            if len(popularlist) > 0:
+            if len(popularlist) > 0 and location_id is not None:
                 cursor.executemany(popular_times_sql, popularlist)
                 imported_rows += len(popularlist)
 
-            if busystatus is not None:
+            if busystatus is not None and location_id is not None:
                 cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
+            if star is not None and location_id is not None:
+                cursor.execute(star_sql, (google_place_id, call_id, star))
         conn.commit()
         try:
             save_weather_data_to_snowflake(conn, call_id)
