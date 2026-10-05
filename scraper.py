@@ -769,7 +769,7 @@ def lambda_handler(event, context):
     }
 
 if __name__ == "__main__":
-    
+    """
     event = {
         "queries": [
             "東喜堂花園茶館",
@@ -799,7 +799,7 @@ if __name__ == "__main__":
         else:
             seen.add(a)
    
-    """
-    #print(event)
+    
+    print(event)
     lambda_handler(event, None)
 
