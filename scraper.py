@@ -371,15 +371,12 @@ def scrape_place(driver, url, original_query):
             response = message["params"]["response"]
             request_id = message["params"]["requestId"]
             response_url = response["url"]
-            print("response_url:", response_url)
-            print("request_id:", request_id)
             
             # 只處理 /maps/preview/place
             if "/maps/preview/place" not in response_url:
                 continue
 
-            print("response_url:", response_url)
-            print("request_id outter:", request_id)
+         
             logging.info(
                 f"Found /maps/preview/place: "
                 f"{response.get('status', 'unknown')} {response_url}"
@@ -627,7 +624,8 @@ def insert_into_snowflake(entry):
                 if not isinstance(occupancy, int) or not 0 <= occupancy <= 100:
                     continue
                 popularlist.append((location_id, call_id, hour, occupancy, DAYS[dayindex]))
-    
+
+            imported_rows = 0
             if len(popularlist) > 0 and location_id is not None:
                 cursor.executemany(popular_times_sql, popularlist)
                 imported_rows += len(popularlist)
@@ -640,9 +638,9 @@ def insert_into_snowflake(entry):
     cursor.close()
     conn.close()
 
-def main(queries=None):
-    if queries is None:
-        logging.error("queries not found.")
+def main(query=None):
+    if query is None:
+        logging.error("Query not found.")
         return []
 
     all_results = []
@@ -651,34 +649,34 @@ def main(queries=None):
     try:
         driver = get_driver()
         
-        for query in queries:  # Limit to first query for debugging
-            urls = get_place_urls(driver, query)
+        #for query in queries:  # Limit to first query for debugging
+        urls = get_place_urls(driver, query)
             
-            for url in urls:  # Limit to first 1 URL for debugging
-                try:
-                    data = scrape_place(driver, url, query)
-                    if data:
-                        all_results.append(data)
-                except Exception as e:
-                    logging.error(f"Error scraping {url}: {e}")
-                    traceback.print_exc()
+        for url in urls:  # Limit to first 1 URL for debugging
+            try:
+                data = scrape_place(driver, url, query)
+                if data:
+                    all_results.append(data)
+            except Exception as e:
+                logging.error(f"Error scraping {url}: {e}")
+                traceback.print_exc()
 
                     # ChromeDriver 可能已經卡死，直接重建
-                    try:
-                        driver.quit()
-                    except Exception:
-                        pass
-                    driver = None
-                    try:
-                        driver = get_driver()
-                        logging.info("ChromeDriver restarted after scraping error.")
-                    except Exception as restart_error:
-                        logging.error(
-                            f"Failed to restart ChromeDriver: {restart_error}"
-                        )
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+                driver = None
+                try:
+                    driver = get_driver()
+                    logging.info("ChromeDriver restarted after scraping error.")
+                except Exception as restart_error:
+                    logging.error(
+                        f"Failed to restart ChromeDriver: {restart_error}"
+                    )
                     
 
-                    continue
+                continue
                 #finally:
                 #    driver.quit()
                     
@@ -828,7 +826,7 @@ def run_parallel(locations, batch_size=5):
             f"Processing locations {i + 1} ~ {i + len(batch)}"
         )
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=2) as executor:
 
             futures = {
                 executor.submit(main, location): location
@@ -882,5 +880,5 @@ if __name__ == "__main__":
     
     print(event)
     #lambda_handler(event, None)
-    results = run_parallel(locations,batch_size=5)
+    results = run_parallel(locations,batch_size=2)
 
