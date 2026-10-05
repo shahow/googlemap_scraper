@@ -9,6 +9,7 @@ import traceback
 import re
 import uuid
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 from requests import request
 import requests
@@ -114,6 +115,7 @@ def get_driver():
     # =====================================================
     else:
         print("Environment: Windows / Local")
+        options.add_argument("--headless=new")
 
         options.add_argument("--lang=zh-TW")
         options.add_argument("--accept-lang=zh-TW,zh")
@@ -348,25 +350,7 @@ def scrape_place(driver, url, original_query):
         logging.info(f"Place Name: {place_name}")
     except Exception:
         pass
-    """
-    try:
-        wait.until(
-        lambda d: any(
-            re.search(
-                r'\d+時的繁忙程度通常為\s*\d+%',
-                el.get_attribute("aria-label") or ""
-            )
-            for el in d.find_elements(
-                By.CSS_SELECTOR,
-                "div[role='img']"
-            )
-        )
-    )
-        logging.info("Busydata loaded.")
 
-    except TimeoutException:
-        logging.warning("Busydata not loaded within 15 seconds.")
-    """
     safe_name = re.sub(r'[\\/*?:"<>|]', "_", place_name)
     time.sleep(8)
 
@@ -387,15 +371,8 @@ def scrape_place(driver, url, original_query):
             response = message["params"]["response"]
             request_id = message["params"]["requestId"]
             response_url = response["url"]
-            """
-            #ec2 and docker test
-            print("READY:", driver.execute_script("return document.readyState"))
-            print("JS:", driver.execute_script("return 1 + 1"))
-            print("BODY:", driver.execute_script("return document.body.innerHTML.length"))
-            print("RESOURCES:", driver.execute_script(
-                  "return performance.getEntriesByType('resource').length"
-            ))
-            """
+            print("response_url:", response_url)
+            print("request_id:", request_id)
             
             # 只處理 /maps/preview/place
             if "/maps/preview/place" not in response_url:
@@ -511,11 +488,6 @@ def scrape_place(driver, url, original_query):
 
     logging.info("========== RAW BUSY DATA ==========")
 
-    #for i, item in enumerate(visible_data):
-    #    logging.info(f"[{i}] {item}")
-
-    #html = driver.page_source
-
     with open(f"debug_{safe_name}.html", "w", encoding="utf-8") as f:
         f.write(driver.page_source)
 
@@ -526,12 +498,9 @@ def scrape_place(driver, url, original_query):
     "div[role='img']")
     
     buttons = driver.find_elements(By.CSS_SELECTOR, "button.CsEnBe")
-    #print("address: " + buttons[0].get_attribute("aria-label"))
-    
-
+  
     nurl = driver.current_url
     nowurl = nurl.replace("https://www.google.com/maps/place/", "")
-    #print("nowurl: " +  nowurl)
     coordinates = re.search(r"!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)", nowurl)
     if coordinates:
         latitude, longitude = coordinates.groups()
@@ -548,11 +517,7 @@ def scrape_place(driver, url, original_query):
     star = ""
     print("busydata: " + str(busydata))
     print("google_place_id: " + str(google_place_id))
-    """
-    busydata = {day: [] for day in DAYS}
-    day_index = 0
-    previous_hour = None
-    """
+  
     for a in elements:
         text = a.get_attribute("aria-label") or ""
         #print("this is the aria-label: " + text)
@@ -583,8 +548,7 @@ def scrape_place(driver, url, original_query):
     print("busystatus: " + str(busystatus))
     print("address: " + buttons[0].get_attribute("aria-label") if buttons else "")
 
-    
-    return {
+    insert_into_snowflake({
         "query": original_query,
         "name": place_name,
         "url": url,
@@ -595,7 +559,86 @@ def scrape_place(driver, url, original_query):
         "popular_times": busydata,
         "busystatus": busystatus,
         "google_place_id": google_place_id
-    }
+    })
+
+def insert_into_snowflake(entry):
+    location_sql = """
+                INSERT INTO GMAP_DB.PUBLIC.location (call_id,name, address, latitude, longitude, google_place_id)
+                SELECT %s, %s, %s, %s, %s,%s 
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM GMAP_DB.PUBLIC.location
+                    WHERE google_place_id = %s
+    
+                )
+            """
+       # Optional: small delay to ensure the commit is processed
+    popular_times_sql = """
+                INSERT INTO GMAP_DB.PUBLIC.location_busy
+                    (location_id,call_id, hour,busy,weekday)
+                    VALUES (%s, %s, %s, %s, %s)
+            """
+    
+    star_sql = """
+            INSERT INTO GMAP_DB.PUBLIC.location_star
+                (GOOGLE_PLACE_ID, call_id, star)        
+                VALUES (%s, %s, %s)
+                """
+    
+    busystatus_sql = """
+                INSERT INTO GMAP_DB.PUBLIC.busystatus
+                    (location_id, call_id, busystatus)   
+                    VALUES (%s, %s, %s)"""
+    name = str(entry.get("name") or "Unknown")
+    address = (entry.get("address") or "").replace("地址: ", "", 1)
+    latitude = entry.get("latitude") or None
+    longitude = entry.get("longitude") or None
+    star = entry.get("star") or None
+    busystatus = entry.get("busystatus") or None
+    google_place_id = entry.get("google_place_id") or None
+    
+    location_id = None
+    conn = sf.getConn()
+    cursor = conn.cursor()
+    cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
+
+    if google_place_id:         
+        cursor.execute(location_sql, (
+                    call_id, name, address, latitude, longitude, google_place_id, google_place_id
+                    ))
+               
+        cursor.execute("SELECT id FROM GMAP_DB.PUBLIC.location WHERE google_place_id = %s", (google_place_id,))
+        location_id = cursor.fetchone()[0]
+    
+        popular_times = entry.get("popular_times") or {}
+        print(f"Processing popular_times for {name}: {popular_times}")
+        popularlist=[]
+    
+        print(f"location_id: {location_id}")
+        for dayindex in range(1, 8):
+            filtered_days = [d for d in popular_times if d.get("weekday") == dayindex]
+            print(f"Filtered days for {dayindex}: {filtered_days}")
+    
+            for hour_data in filtered_days:
+                hour = hour_data.get("hour")
+                occupancy = hour_data.get("busy")
+                #print(f"Day: {day_name}, Hour: {hour}, Occupancy: {occupancy}")
+                if not isinstance(hour, int) or not 0 <= hour <= 23:
+                    continue
+                if not isinstance(occupancy, int) or not 0 <= occupancy <= 100:
+                    continue
+                popularlist.append((location_id, call_id, hour, occupancy, DAYS[dayindex]))
+    
+            if len(popularlist) > 0 and location_id is not None:
+                cursor.executemany(popular_times_sql, popularlist)
+                imported_rows += len(popularlist)
+    
+        if busystatus is not None and location_id is not None:
+            cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
+        if star is not None and location_id is not None:
+            cursor.execute(star_sql, (google_place_id, call_id, star))
+    conn.commit()
+    cursor.close()
+    conn.close()
 
 def main(queries=None):
     if queries is None:
@@ -618,6 +661,23 @@ def main(queries=None):
                         all_results.append(data)
                 except Exception as e:
                     logging.error(f"Error scraping {url}: {e}")
+                    traceback.print_exc()
+
+                    # ChromeDriver 可能已經卡死，直接重建
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
+                    driver = None
+                    try:
+                        driver = get_driver()
+                        logging.info("ChromeDriver restarted after scraping error.")
+                    except Exception as restart_error:
+                        logging.error(
+                            f"Failed to restart ChromeDriver: {restart_error}"
+                        )
+                    
+
                     continue
                 #finally:
                 #    driver.quit()
@@ -638,13 +698,8 @@ def main(queries=None):
     conn = sf.getConn()
     cursor = conn.cursor()
     cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
-    try:
+    try:  
         
-        cursor.execute("""
-            INSERT INTO GMAP_DB.PUBLIC.CALL_LOG (call_id)
-            VALUES (%s)
-        """, (call_id,))
-
         location_sql = """
             INSERT INTO GMAP_DB.PUBLIC.location (call_id,name, address, latitude, longitude, google_place_id)
             SELECT %s, %s, %s, %s, %s,%s 
@@ -712,9 +767,6 @@ def main(queries=None):
                         continue
                     popularlist.append((location_id, call_id, hour, occupancy, DAYS[dayindex]))
 
-            #for row in popularlist:
-            #    cursor.execute(popular_times_sql, row)
-            #    imported_rows += 1
             if len(popularlist) > 0 and location_id is not None:
                 cursor.executemany(popular_times_sql, popularlist)
                 imported_rows += len(popularlist)
@@ -740,10 +792,6 @@ def main(queries=None):
         cursor.close()
         conn.close()
 
-
-#if __name__ == "__main__":
-#    main()
-
 def lambda_handler(event, context):
     queries = event.get("queries", [])
 
@@ -768,6 +816,42 @@ def lambda_handler(event, context):
         "body": json.dumps(results, ensure_ascii=False)
     }
 
+def run_parallel(locations, batch_size=5):
+
+    all_results = []
+
+    for i in range(0, len(locations), batch_size):
+
+        batch = locations[i:i + batch_size]
+
+        logging.info(
+            f"Processing locations {i + 1} ~ {i + len(batch)}"
+        )
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+
+            futures = {
+                executor.submit(main, location): location
+                for location in batch
+            }
+
+            for future in as_completed(futures):
+
+                location = futures[future]
+
+                try:
+                    results = future.result()
+
+                    if results:
+                        all_results.extend(results)
+
+                except Exception as e:
+                    logging.error(
+                        f"Worker failed for {location}: {e}"
+                    )
+
+    return all_results
+
 if __name__ == "__main__":
     """
     event = {
@@ -779,27 +863,24 @@ if __name__ == "__main__":
     }
     """
     event = {}
-    locations = []
     conn = sf.getConn()
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT NAME FROM GMAP_DB.PUBLIC.LOCATION;")
-    for records in cursor.fetchall():
-        locations.append(records[0])
+    locations = [record[0] for record in cursor.fetchall()]
     event["queries"] = locations
+    cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
+    cursor.execute("""
+                INSERT INTO GMAP_DB.PUBLIC.CALL_LOG (call_id)
+                VALUES (%s)
+            """, (call_id,))
+    
     cursor.close()
     conn.close()
 
     seen = set()
     duplicates = []
-
-    for a in event["queries"]:
-        if a in seen:
-            duplicates.append(a)
-            print("這個元素重複了（被 set 濾掉的其中之一）: " + str(a))
-        else:
-            seen.add(a)
-   
     
     print(event)
-    lambda_handler(event, None)
+    #lambda_handler(event, None)
+    results = run_parallel(locations,batch_size=5)
 
