@@ -88,3 +88,103 @@ README.md
 * Snowflake Python Connector
 * Chrome DevTools Protocol (CDP)
 * `uv`
+
+  ## Future Architecture
+
+### S3 → SQS → Lambda → Snowflake
+
+The crawler can be further improved by separating data collection from database ingestion.
+
+Instead of writing directly to Snowflake, the Selenium crawler stores each location's result as a JSON file in Amazon S3.
+
+```text
+Google Maps
+     │
+     ▼
+EC2 Selenium Crawler
+     │
+     │ JSON
+     ▼
+Amazon S3
+     │
+     │ ObjectCreated Event
+     ▼
+Amazon SQS
+     │
+     │ Batch Messages
+     ▼
+AWS Lambda
+     │
+     │ Batch Processing
+     ▼
+Snowflake
+```
+
+### Architecture Components
+
+**EC2 Selenium Crawler**
+
+Runs the Google Maps scraper and collects location information, popular times, and busy data. Each scraped location is saved as an individual JSON file.
+
+**Amazon S3**
+
+Acts as the raw data storage layer. Keeping the original JSON data in S3 allows the data to be reprocessed later without scraping Google Maps again.
+
+**Amazon SQS**
+
+Receives S3 object creation events and provides a queue between the crawler and the database loader. This allows the crawler to produce data continuously without waiting for Snowflake ingestion.
+
+**AWS Lambda**
+
+Consumes SQS messages in batches, retrieves the corresponding JSON files from S3, transforms the data, and loads the results into Snowflake.
+
+**Snowflake**
+
+Stores the processed location, busy-time, and crawler execution data. Batch loading can be used to reduce the overhead of individual database inserts.
+
+### Overall Data Flow
+
+```text
+                    ┌─────────────────┐
+                    │   Google Maps   │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │ EC2 Selenium    │
+                    │    Crawler      │
+                    └────────┬────────┘
+                             │
+                          JSON
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │       S3        │
+                    │   Raw Storage   │
+                    └────────┬────────┘
+                             │
+                      ObjectCreated
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │      SQS        │
+                    │ Queue / Buffer  │
+                    └────────┬────────┘
+                             │
+                           Batch
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │     Lambda      │
+                    │ Data Ingestion  │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │    Snowflake    │
+                    │   GMAP_DB       │
+                    └─────────────────┘
+```
+
+This architecture decouples the crawler from the database layer, provides buffering and retry capabilities through SQS, and allows Snowflake ingestion to be processed independently from Google Maps scraping.
+
