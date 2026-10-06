@@ -89,7 +89,7 @@ README.md
 * Chrome DevTools Protocol (CDP)
 * `uv`
 
-  ## Future Architecture
+## Future Architecture
 
 ### S3 → SQS → Lambda → Snowflake
 
