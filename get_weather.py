@@ -216,7 +216,6 @@ def save_weather_data_to_snowflake(connection, call_id):
 
     taichung_data = []
     for location in locations:
-        print(location)
         record = {
         field['id']: get_nested_value(
             location,
@@ -299,9 +298,10 @@ ON DUPLICATE KEY UPDATE
     cursor.executemany(observation_insert_sql, observation_rows)
     connection.commit()
 
-load_dotenv( dotenv_path=r"C:\Users\User\gmap_test\.env")
-account = os.getenv("SNOWFLAKE_ACCOUNT")
-conn = sf.getConn()
-call_id = str(uuid.uuid4())
-
-save_weather_data_to_snowflake(conn, call_id)
+if __name__ == "__main__":
+    conn = sf.getConn()
+    call_id = str(uuid.uuid4())
+    try:
+        save_weather_data_to_snowflake(conn, call_id)
+    finally:
+        conn.close()

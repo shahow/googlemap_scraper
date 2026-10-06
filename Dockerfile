@@ -174,4 +174,4 @@ COPY . ${LAMBDA_TASK_ROOT}
 # Lambda handler
 # --------------------------------------------------
 
-CMD ["lambda_function.lambda_handler"]
+CMD ["scraper.lambda_handler"]
