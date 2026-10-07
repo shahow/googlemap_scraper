@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 from requests import request
 import requests
-#import mymariadb as MariaDB
+from uploads3file import upload_file,create_temp_dir
 from busyparser import parse_busydata
 import snowflake_connector as sf
 from get_weather import save_weather_data_to_snowflake,save_txt
@@ -28,7 +28,7 @@ from selenium.common.exceptions import TimeoutException, WebDriverException
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
+temp_dir = create_temp_dir()
 DAYS = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 try:
@@ -429,7 +429,7 @@ def scrape_place(driver, url, original_query):
 
                 print(temp_filename)
                 with open(
-                    temp_filename,
+                    temp_dir / temp_filename,
                     "w",
                     encoding="utf-8"
                 ) as f:
@@ -485,8 +485,8 @@ def scrape_place(driver, url, original_query):
 
     logging.info("========== RAW BUSY DATA ==========")
 
-    with open(f"debug_{safe_name}.html", "w", encoding="utf-8") as f:
-        f.write(driver.page_source)
+    #with open(temp_dir / f"debug_{safe_name}.html", "w", encoding="utf-8") as f:
+    #    f.write(driver.page_source)
 
     logging.info("========== END RAW BUSY DATA ==========")
     logging.info("========== START GET PLACE INFO========")
@@ -545,6 +545,31 @@ def scrape_place(driver, url, original_query):
     print("busystatus: " + str(busystatus))
     print("address: " + buttons[0].get_attribute("aria-label") if buttons else "")
 
+    #modify to upload to s3
+    timebucket = time.strftime("%Y%m%d%H", time.localtime())
+    object_name = f"scraper/{timebucket}/{google_place_id}_.json"
+    json_data = {
+        "query": original_query,
+        "name": place_name,
+        "url": url,
+        "latitude": latitude,
+        "longitude": longitude,
+        "star": star,
+        "address": buttons[0].get_attribute("aria-label") if buttons else "",
+        "popular_times": busydata,
+        "busystatus": busystatus,
+        "google_place_id": google_place_id
+    }
+    filepath = f"{google_place_id}.json"
+    if platform.system() == "Linux":
+        filepath = f"/tmp/{google_place_id}.json"
+    #else:
+    #    filepath = f"./{timebucket}/{google_place_id}.json"
+    
+    with open(temp_dir / filepath, "w", encoding="utf-8") as f:
+        json.dump(json_data, f, ensure_ascii=False, indent=4)
+    upload_file(temp_dir / filepath, "shahowbackup", object_name)
+    """
     insert_into_snowflake({
         "query": original_query,
         "name": place_name,
@@ -557,6 +582,7 @@ def scrape_place(driver, url, original_query):
         "busystatus": busystatus,
         "google_place_id": google_place_id
     })
+    """
 
 def insert_into_snowflake(entry):
     location_sql = """
@@ -660,8 +686,7 @@ def main(query=None):
             except Exception as e:
                 logging.error(f"Error scraping {url}: {e}")
                 traceback.print_exc()
-
-                    # ChromeDriver 可能已經卡死，直接重建
+                # ChromeDriver 可能已經卡死，直接重建
                 try:
                     driver.quit()
                 except Exception:
@@ -675,7 +700,6 @@ def main(query=None):
                         f"Failed to restart ChromeDriver: {restart_error}"
                     )
                     
-
                 continue
                 #finally:
                 #    driver.quit()
@@ -687,9 +711,6 @@ def main(query=None):
         if driver:
             driver.quit()
 
-    # Save JSON
-    with open("popular_times.json", "w") as f:
-        json.dump(all_results, f, indent=4)
     logging.info(f"Scraping completed. Found data for {len(all_results)} places. Saved to popular_times.json")
 
     # Read the JSON and write place and popular-times data to MariaDB.
@@ -704,7 +725,6 @@ def main(query=None):
             WHERE NOT EXISTS (
                 SELECT 1 FROM GMAP_DB.PUBLIC.location
                 WHERE google_place_id = %s
-
             )
         """
    # Optional: small delay to ensure the commit is processed
@@ -806,9 +826,6 @@ def lambda_handler(event, context):
     #check location_busy table
     busystatus_sql = "SELECT * FROM GMAP_DB.PUBLIC.BUSYSTATUS WHERE CALL_ID = '32175138-dfb7-4ad5-9aef-dff2b3c401fb';"
 
-    
-
-
     return {
         "statusCode": 200,
         "body": json.dumps(results, ensure_ascii=False)
@@ -826,7 +843,7 @@ def run_parallel(locations, batch_size=5):
             f"Processing locations {i + 1} ~ {i + len(batch)}"
         )
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=batch_size) as executor:
 
             futures = {
                 executor.submit(main, location): location
@@ -880,5 +897,5 @@ if __name__ == "__main__":
     
     print(event)
     #lambda_handler(event, None)
-    results = run_parallel(locations,batch_size=2)
+    results = run_parallel(locations,batch_size=3)
 
