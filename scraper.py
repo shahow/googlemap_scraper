@@ -710,7 +710,6 @@ def main(query=None):
     finally:
         if driver:
             driver.quit()
-
     logging.info(f"Scraping completed. Found data for {len(all_results)} places. Saved to popular_times.json")
 
     # Read the JSON and write place and popular-times data to MariaDB.
@@ -718,7 +717,6 @@ def main(query=None):
     cursor = conn.cursor()
     cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
     try:  
-        
         location_sql = """
             INSERT INTO GMAP_DB.PUBLIC.location (call_id,name, address, latitude, longitude, google_place_id)
             SELECT %s, %s, %s, %s, %s,%s 

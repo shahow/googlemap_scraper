@@ -131,6 +131,80 @@ def save_weather_data_to_snowflake(connection, call_id):
     'locationName': '中壢',
     'elementName': 'WeatherElement'
     }
+
+    taipei_stations = [
+    "466910",  # 鞍部
+    "466920",  # 臺北
+    "466930",  # 竹子湖
+    "C0A770",  # 科教館
+    "C0A980",  # 社子
+    "C0A9C0",  # 天母
+    "C0A9F0",  # 內湖
+    "C0AC40",  # 大屯山
+    "C0AC70",  # 信義
+    "C0AC80",  # 文山
+    "C0AH40",  # 平等
+    "C0AH70",  # 松山
+    "C0AI40",  # 石牌
+            
+            ]
+
+    new_taipei_stations = [
+    "466881",  # 新北
+    "466900",  # 淡水
+    "C0A520",  # 山佳
+    "C0A530",  # 坪林
+    "C0A550",  # 泰平
+    "C0A570",  # 桶後
+    "C0A640",  # 石碇
+    "C0A860",  # 大坪
+    "C0A870",  # 五指山
+    "C0A890",  # 雙溪
+    "C0A931",  # 三和
+    "C0A940",  # 金山
+    "C0A950",  # 鼻頭角
+    "C0A970",  # 三貂角
+    "C0AC60",  # 三峽
+    "C0ACA0",  # 新莊
+    "C0AD10",  # 八里
+    "C0AD30",  # 蘆洲
+    "C0AD40",  # 土城
+    "C0AD50",  # 鶯歌
+    "C0AG80",  # 中和
+    "C0AH00",  # 汐止
+    "C0AH10",  # 永和
+    "C0AH30",  # 五分山
+    "C0AH50",  # 林口
+    "C0AH80",  # 深坑
+    "C0AH90",  # 福山植物園
+    "C0AI00",  # 五股
+    "C0AI10",  # 屈尺
+    "C0AI20",  # 白沙灣
+    "C0AI30",  # 三重
+    "C0AJ20",  # 野柳
+    "C0AJ30",  # 淡水觀海
+    "C0AJ40",  # 石門
+    "C0AJ50",  # 水湳洞
+    "C0AJ60",  # 六塊厝
+    "C0AJ70",  # 田寮
+    "C0AJ80",  # 板橋
+    "C0AJ90",  # 澳底
+    "C0AK10",  # 太平里
+    "C0AK30",  # 硬漢嶺
+]
+
+    keelung_stations = [
+    "466940",  # 基隆
+    "466950",  # 彭佳嶼
+    "C0B010",  # 七堵
+    "C0B020",  # 基隆嶼
+    "C0B040",  # 大武崙
+    "C0B050",  # 八斗子
+    "C0B060",  # 暖暖
+]
+
+
+
     params['StationId'] = [
     # 署屬有人站
     "467490",
@@ -187,6 +261,8 @@ def save_weather_data_to_snowflake(connection, call_id):
     "G2F820",
     "K2F750",
     ]
+
+    params['StationId'] = params['StationId'] + taipei_stations + new_taipei_stations + keelung_stations
 # 發送 GET 請求
     response = requests.get(url, params=params,verify=False, headers=headers)
     data = response.json()
