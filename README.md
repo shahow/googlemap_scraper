@@ -26,14 +26,14 @@ The project is designed to run both locally and in an AWS container environment.
 
 ```text
                          ┌────────────────────┐
-                         │  Queries Location  │
-                         │  from datbase      │
-                         │ ["Location A", ...]│
+                         │  uv run scraper.py |
                          └─────────┬──────────┘
                                    │
                                    ▼
                          ┌────────────────────┐
-                         │  uv run scraper.py │
+                         │  Queries Locationy │
+                         │    from datbase    |
+                         | ["Location A", ...]|
                          └─────────┬──────────┘
                                    │
                                    ▼
@@ -43,13 +43,15 @@ The project is designed to run both locally and in an AWS container environment.
                          │ Google Maps        │
                          └─────────┬──────────┘
                                    │
-                         CDP Network Response
+                         ┌────────────────────┐
+                         |CDP Network Response|
+                         └─────────┬──────────┘
                                    │
                                    ▼
                          ┌────────────────────┐
                          │  Busy Data Parser  │
                          │                    │
-                         │ Popular Times      │
+                         │   Popular Times    │
                          └─────────┬──────────┘
                                    │
                                    ▼
@@ -98,31 +100,40 @@ The crawler can be further improved by separating data collection from database 
 Instead of writing directly to Snowflake, the Selenium crawler stores each location's result as a JSON file in Amazon S3.
 
 ```text
-Google Maps
-     │
-     ▼
-EC2 Selenium Crawler
-     │
-     │ JSON
-     ▼
-Amazon S3
-     │
-     │ ObjectCreated Event
-     ▼
-Amazon SQS
-     │
-     │ Batch Messages
-     ▼
-AWS Lambda
-     │
-     │ Batch Processing
-     ▼
-Snowflake
+                                  ┌────────────────────┐
+                                  |   EC2 Selenium     |
+                                  |     Scraper        |
+                                  └────────────────────┘
+                                           │
+                                           │
+                                           │ JSON
+                                           ▼
+                                  ┌────────────────────┐
+                                  |    Amazon S3       |
+                                  └────────────────────┘
+                                           │
+                                           │ ObjectCreated Event
+                                           ▼
+                                  ┌────────────────────┐
+                                  |    Amazon SQS      |
+                                  └────────────────────┘
+                                           │
+                                           │ Batch Messages
+                                           ▼
+                                  ┌────────────────────┐
+                                  |    AWS Lambda      |
+                                  └────────────────────┘
+                                           │
+                                           │ Batch Processing
+                                           ▼
+                                  ┌────────────────────┐
+                                  |    Snowflake       |
+                                  └────────────────────┘
 ```
 
 ### Architecture Components
 
-**EC2 Selenium Crawler**
+**EC2 Selenium Scraper**
 
 Runs the Google Maps scraper and collects location information, popular times, and busy data. Each scraped location is saved as an individual JSON file.
 
@@ -182,7 +193,7 @@ Stores the processed location, busy-time, and crawler execution data. Batch load
                              ▼
                     ┌─────────────────┐
                     │    Snowflake    │
-                    │   GMAP_DB       │
+                    │     GMAP_DB     │
                     └─────────────────┘
 ```
 
