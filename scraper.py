@@ -549,6 +549,7 @@ def scrape_place(driver, url, original_query):
     timebucket = time.strftime("%Y%m%d%H", time.localtime())
     object_name = f"scraper/{timebucket}/{google_place_id}_.json"
     json_data = {
+        "call_id": call_id,
         "query": original_query,
         "name": place_name,
         "url": url,
