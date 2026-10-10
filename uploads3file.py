@@ -62,7 +62,7 @@ def create_temp_dir():
 
     temp_dir = base_dir / dir_name
     temp_dir.mkdir(parents=True, exist_ok=True)
-    return te
+    return temp_dir
 
 if __name__ == "__main__":
     create_temp_dir()

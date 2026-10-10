@@ -4,6 +4,7 @@ import os
 import platform
 import time
 import json
+import csv
 import logging
 import traceback
 import re
@@ -15,7 +16,7 @@ from requests import request
 import requests
 from uploads3file import upload_file,create_temp_dir
 from busyparser import parse_busydata
-import snowflake_connector as sf
+#import snowflake_connector as sf
 from get_weather import save_weather_data_to_snowflake,save_txt
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -147,9 +148,7 @@ def getbusystr(body):
     targetlist = [ '[1,[[','[2,[[','[3,[[','[4,[[','[5,[[','[6,[[']
     firstquote = body.index('[[[7,')
     print("firstquote:", firstquote)
-    #secondquote = body.index('[1,[[', firstquote)
-    #print("secondquote:", secondquote) 
-    #print(body[firstquote:secondquote]) 
+   
     firststart = -1
     for a in targetlist:
         if a in body:
@@ -164,7 +163,25 @@ def getbusystr(body):
                 #save_txt(busystr)
     end = body.find(']],', end) + 3
     busystr = body[firststart:end]
-    print("busystr:", busystr)
+    nowbusylbl = body.find('目前時段：',end)
+    #print("busystr:", busystr)
+
+    nowbusylbl = body.find('目前時段：')
+
+    if nowbusylbl != -1:
+        endss = body.find('"', nowbusylbl)
+        nowbusy = body[nowbusylbl:endss]
+
+        print("nowbusylbl:", nowbusylbl)
+        print("nowbusy:", nowbusy)
+    else:
+        nowbusy = None
+        print("找不到目前時段")
+
+    endss = body.find('"],', nowbusylbl) 
+    print("nowbusylbl:", nowbusylbl)
+    print("newversion:", body[nowbusylbl:endss])
+    time.sleep(10)
     return busystr
 
 
@@ -272,7 +289,8 @@ def get_place_urls(driver, query):
             href = a.get_attribute("href")
             if href:
                 urls.add(href.split("?")[0])
-        
+        for url in urls:
+            logging.info(f"Found place URL: {url}")
         logging.info(f"Found {len(urls)} places.")
         return list(urls)
 
@@ -427,13 +445,8 @@ def scrape_place(driver, url, original_query):
                         f"{response_index}.txt"
                     )
 
-                print(temp_filename)
-                with open(
-                    temp_dir / temp_filename,
-                    "w",
-                    encoding="utf-8"
-                ) as f:
-                    f.write(body)
+                #with open(                  temp_dir / temp_filename,"w",                    encoding="utf-8") as f:
+                #    f.write(body)
 
                 logging.info(
                     f"Saved place response: "
@@ -483,13 +496,6 @@ def scrape_place(driver, url, original_query):
         if aria:
             visible_data.append(aria)
 
-    logging.info("========== RAW BUSY DATA ==========")
-
-    #with open(temp_dir / f"debug_{safe_name}.html", "w", encoding="utf-8") as f:
-    #    f.write(driver.page_source)
-
-    logging.info("========== END RAW BUSY DATA ==========")
-    logging.info("========== START GET PLACE INFO========")
     elements = driver.find_elements(
     By.CSS_SELECTOR,
     "div[role='img']")
@@ -517,29 +523,9 @@ def scrape_place(driver, url, original_query):
   
     for a in elements:
         text = a.get_attribute("aria-label") or ""
-        #print("this is the aria-label: " + text)
         if text.endswith(("顆星", "stars")):
             rating = re.search(r"(\d+(?:\.\d+)?)", text)
             star = rating.group(1) if rating else ""
-            #print("star: " + star)
-        #logging.info("Start get single busy data")
-        """
-        m = re.search(r'(\d+)時的繁忙程度通常為\s*(\d+)%', text)
-
-        if m:
-            hour, busy = m.groups()
-            hour = int(hour)
-            if previous_hour is not None and hour < previous_hour:
-                day_index += 1
-            if day_index < len(DAYS):
-                busydata[DAYS[day_index]].append({
-                    "hour": hour,
-                    "occupancy": int(busy),
-                    "raw": text,
-                })
-            previous_hour = hour
-        """
-        #logging.info("End get single busy data")
     
     busystatus = get_realtime_busy(driver)
     print("busystatus: " + str(busystatus))
@@ -585,86 +571,6 @@ def scrape_place(driver, url, original_query):
     })
     """
 
-def insert_into_snowflake(entry):
-    location_sql = """
-                INSERT INTO GMAP_DB.PUBLIC.location (call_id,name, address, latitude, longitude, google_place_id)
-                SELECT %s, %s, %s, %s, %s,%s 
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM GMAP_DB.PUBLIC.location
-                    WHERE google_place_id = %s
-    
-                )
-            """
-       # Optional: small delay to ensure the commit is processed
-    popular_times_sql = """
-                INSERT INTO GMAP_DB.PUBLIC.location_busy
-                    (location_id,call_id, hour,busy,weekday)
-                    VALUES (%s, %s, %s, %s, %s)
-            """
-    
-    star_sql = """
-            INSERT INTO GMAP_DB.PUBLIC.location_star
-                (GOOGLE_PLACE_ID, call_id, star)        
-                VALUES (%s, %s, %s)
-                """
-    
-    busystatus_sql = """
-                INSERT INTO GMAP_DB.PUBLIC.busystatus
-                    (location_id, call_id, busystatus)   
-                    VALUES (%s, %s, %s)"""
-    name = str(entry.get("name") or "Unknown")
-    address = (entry.get("address") or "").replace("地址: ", "", 1)
-    latitude = entry.get("latitude") or None
-    longitude = entry.get("longitude") or None
-    star = entry.get("star") or None
-    busystatus = entry.get("busystatus") or None
-    google_place_id = entry.get("google_place_id") or None
-    
-    location_id = None
-    conn = sf.getConn()
-    cursor = conn.cursor()
-    cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
-
-    if google_place_id:         
-        cursor.execute(location_sql, (
-                    call_id, name, address, latitude, longitude, google_place_id, google_place_id
-                    ))
-               
-        cursor.execute("SELECT id FROM GMAP_DB.PUBLIC.location WHERE google_place_id = %s", (google_place_id,))
-        location_id = cursor.fetchone()[0]
-    
-        popular_times = entry.get("popular_times") or {}
-        print(f"Processing popular_times for {name}: {popular_times}")
-        popularlist=[]
-    
-        print(f"location_id: {location_id}")
-        for dayindex in range(1, 8):
-            filtered_days = [d for d in popular_times if d.get("weekday") == dayindex]
-            print(f"Filtered days for {dayindex}: {filtered_days}")
-    
-            for hour_data in filtered_days:
-                hour = hour_data.get("hour")
-                occupancy = hour_data.get("busy")
-                #print(f"Day: {day_name}, Hour: {hour}, Occupancy: {occupancy}")
-                if not isinstance(hour, int) or not 0 <= hour <= 23:
-                    continue
-                if not isinstance(occupancy, int) or not 0 <= occupancy <= 100:
-                    continue
-                popularlist.append((location_id, call_id, hour, occupancy, DAYS[dayindex]))
-
-            imported_rows = 0
-            if len(popularlist) > 0 and location_id is not None:
-                cursor.executemany(popular_times_sql, popularlist)
-                imported_rows += len(popularlist)
-    
-        if busystatus is not None and location_id is not None:
-            cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
-        if star is not None and location_id is not None:
-            cursor.execute(star_sql, (google_place_id, call_id, star))
-    conn.commit()
-    cursor.close()
-    conn.close()
-
 def main(query=None):
     if query is None:
         logging.error("Query not found.")
@@ -702,9 +608,7 @@ def main(query=None):
                     )
                     
                 continue
-                #finally:
-                #    driver.quit()
-                    
+                      
     except Exception as e:
         logging.error(f"Fatal error: {e}")
         traceback.print_exc()
@@ -712,103 +616,10 @@ def main(query=None):
         if driver:
             driver.quit()
     logging.info(f"Scraping completed. Found data for {len(all_results)} places. Saved to popular_times.json")
-
+    
     # Read the JSON and write place and popular-times data to MariaDB.
-    conn = sf.getConn()
-    cursor = conn.cursor()
-    cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
-    try:  
-        location_sql = """
-            INSERT INTO GMAP_DB.PUBLIC.location (call_id,name, address, latitude, longitude, google_place_id)
-            SELECT %s, %s, %s, %s, %s,%s 
-            WHERE NOT EXISTS (
-                SELECT 1 FROM GMAP_DB.PUBLIC.location
-                WHERE google_place_id = %s
-            )
-        """
-   # Optional: small delay to ensure the commit is processed
-        popular_times_sql = """
-            INSERT INTO GMAP_DB.PUBLIC.location_busy
-                (location_id,call_id, hour,busy,weekday)
-                VALUES (%s, %s, %s, %s, %s)
-        """
-
-        star_sql = """
-        INSERT INTO GMAP_DB.PUBLIC.location_star
-            (GOOGLE_PLACE_ID, call_id, star)        
-            VALUES (%s, %s, %s)
-            """
-
-        busystatus_sql = """
-            INSERT INTO GMAP_DB.PUBLIC.busystatus
-                (location_id, call_id, busystatus)   
-                VALUES (%s, %s, %s)"""
-
-        imported_rows = 0
-        for entry in all_results:
-            name = str(entry.get("name") or "Unknown")
-            address = (entry.get("address") or "").replace("地址: ", "", 1)
-            latitude = entry.get("latitude") or None
-            longitude = entry.get("longitude") or None
-            star = entry.get("star") or None
-            busystatus = entry.get("busystatus") or None
-            google_place_id = entry.get("google_place_id") or None
-
-            location_id = None
-            if google_place_id:
-                
-                cursor.execute(location_sql, (
-                call_id, name, address, latitude, longitude, google_place_id, google_place_id
-                ))
-           
-                cursor.execute("SELECT id FROM GMAP_DB.PUBLIC.location WHERE google_place_id = %s", (google_place_id,))
-                location_id = cursor.fetchone()[0]
-
-
-            popular_times = entry.get("popular_times") or {}
-            print(f"Processing popular_times for {name}: {popular_times}")
-            popularlist=[]
-
-            print(f"location_id: {location_id}")
-            for dayindex in range(1, 8):
-                filtered_days = [d for d in popular_times if d.get("weekday") == dayindex]
-                print(f"Filtered days for {dayindex}: {filtered_days}")
-
-                for hour_data in filtered_days:
-                    hour = hour_data.get("hour")
-                    occupancy = hour_data.get("busy")
-                    #print(f"Day: {day_name}, Hour: {hour}, Occupancy: {occupancy}")
-                    if not isinstance(hour, int) or not 0 <= hour <= 23:
-                        continue
-                    if not isinstance(occupancy, int) or not 0 <= occupancy <= 100:
-                        continue
-                    popularlist.append((location_id, call_id, hour, occupancy, DAYS[dayindex]))
-
-            if len(popularlist) > 0 and location_id is not None:
-                cursor.executemany(popular_times_sql, popularlist)
-                imported_rows += len(popularlist)
-
-            if busystatus is not None and location_id is not None:
-                cursor.execute(busystatus_sql, (location_id, call_id, busystatus))
-            if star is not None and location_id is not None:
-                cursor.execute(star_sql, (google_place_id, call_id, star))
-        conn.commit()
-        try:
-            save_weather_data_to_snowflake(conn, call_id)
-        except Exception:
-            logging.exception("Weather data collection failed")
-        #save_weather_data_to_snowflake(conn, call_id)
-
+    
         
-        logging.info("Imported %d popular-times rows into GMAP_DB.PUBLIC.location_busy", imported_rows)
-    except Exception:
-        conn.rollback()
-        logging.exception("Could not write popular-times data to GMAP_DB.PUBLIC.location_busy")
-        raise
-    finally:
-        cursor.close()
-        conn.close()
-
 def lambda_handler(event, context):
     queries = event.get("queries", [])
 
@@ -823,7 +634,7 @@ def lambda_handler(event, context):
 
     results = main(queries)
     #check location_busy table
-    busystatus_sql = "SELECT * FROM GMAP_DB.PUBLIC.BUSYSTATUS WHERE CALL_ID = '32175138-dfb7-4ad5-9aef-dff2b3c401fb';"
+    #busystatus_sql = "SELECT * FROM GMAP_DB.PUBLIC.BUSYSTATUS WHERE CALL_ID = '32175138-dfb7-4ad5-9aef-dff2b3c401fb';"
 
     return {
         "statusCode": 200,
@@ -877,24 +688,27 @@ if __name__ == "__main__":
     }
     """
     event = {}
+    """
     conn = sf.getConn()
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT NAME FROM GMAP_DB.PUBLIC.LOCATION;")
     locations = [record[0] for record in cursor.fetchall()]
     event["queries"] = locations
     cursor.execute("ALTER SESSION SET TIMEZONE = 'Asia/Taipei'")
-    cursor.execute("""
-                INSERT INTO GMAP_DB.PUBLIC.CALL_LOG (call_id)
-                VALUES (%s)
-            """, (call_id,))
+    cursor.execute("INSERT INTO GMAP_DB.PUBLIC.CALL_LOG (call_id) VALUES (%s)", (call_id,))
     
     cursor.close()
     conn.close()
-
+    """
     seen = set()
     duplicates = []
-    
+
+    locations = []
+    with open('location.csv', 'r', encoding='utf-8', newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            locations.append(row['NAME'])
     print(event)
     #lambda_handler(event, None)
-    results = run_parallel(locations,batch_size=3)
+    results = run_parallel(locations,batch_size=1)
 

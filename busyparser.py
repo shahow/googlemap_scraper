@@ -137,6 +137,8 @@ def _is_busy_days(obj):
         weekday = day[0]
         hours = day[1]
 
+        if not isinstance(weekday, int) or isinstance(weekday, bool):
+            return False
         # Google weekday numbering:
         # 1 = Monday ... 6 = Saturday, 7 = Sunday
         if weekday not in {1, 2, 3, 4, 5, 6, 7}:
