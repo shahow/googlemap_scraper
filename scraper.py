@@ -147,7 +147,6 @@ def get_driver():
 def getbusystr(body):
     targetlist = [ '[1,[[','[2,[[','[3,[[','[4,[[','[5,[[','[6,[[']
     firstquote = body.index('[[[7,')
-    print("firstquote:", firstquote)
    
     firststart = -1
     for a in targetlist:
@@ -157,32 +156,25 @@ def getbusystr(body):
                 firststart = start
             end = body.find(']],', start) + 3
             if end != -1:
-                print("start:", start, "end:", end)
                 busystr = body[start:end]
-                print("busystr:", busystr)
-                #save_txt(busystr)
     end = body.find(']],', end) + 3
     busystr = body[firststart:end]
-    nowbusylbl = body.find('目前時段：',end)
-    #print("busystr:", busystr)
+    nowbusylbl = body.find(']],',end)
 
-    nowbusylbl = body.find('目前時段：')
-
+    busystatus = None
     if nowbusylbl != -1:
-        endss = body.find('"', nowbusylbl)
-        nowbusy = body[nowbusylbl:endss]
+        print("nowbusylbl:", body[firststart:nowbusylbl])
+        busynowstr =  body[end:nowbusylbl]
+        print("nowbusylbl:",  body[end:nowbusylbl])
+        
+        busynowlist = ["非繁忙時段","極為繁忙","略為繁忙","有點繁忙","不如平常繁忙","比平常略為繁忙"]
+        for a in busynowlist:
+            if a in busynowstr:
+                busystatus = a
+        print("busystatus:",busystatus) 
 
-        print("nowbusylbl:", nowbusylbl)
-        print("nowbusy:", nowbusy)
-    else:
-        nowbusy = None
-        print("找不到目前時段")
-
-    endss = body.find('"],', nowbusylbl) 
-    print("nowbusylbl:", nowbusylbl)
-    print("newversion:", body[nowbusylbl:endss])
-    time.sleep(10)
-    return busystr
+    #time.sleep(10)
+    return busystr,busystatus
 
 
 
@@ -409,7 +401,7 @@ def scrape_place(driver, url, original_query):
 
                 logging.info(f"body size={len(body):,}")
                 logging.info(f"body preview={body[:2000]}")
-                busystr = getbusystr(body)
+                busystr,busystatus = getbusystr(body)
                 cnt=busystr.count(']],')
                 if cnt == 7:
                     busydata = parse_busydata(body)
@@ -445,8 +437,8 @@ def scrape_place(driver, url, original_query):
                         f"{response_index}.txt"
                     )
 
-                #with open(                  temp_dir / temp_filename,"w",                    encoding="utf-8") as f:
-                #    f.write(body)
+                with open(                  temp_dir / temp_filename,"w",                    encoding="utf-8") as f:
+                    f.write(body)
 
                 logging.info(
                     f"Saved place response: "
@@ -527,8 +519,8 @@ def scrape_place(driver, url, original_query):
             rating = re.search(r"(\d+(?:\.\d+)?)", text)
             star = rating.group(1) if rating else ""
     
-    busystatus = get_realtime_busy(driver)
-    print("busystatus: " + str(busystatus))
+    #busystatus = get_realtime_busy(driver)
+    #print("busystatus: " + str(busystatus))
     print("address: " + buttons[0].get_attribute("aria-label") if buttons else "")
 
     #modify to upload to s3
