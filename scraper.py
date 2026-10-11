@@ -6,6 +6,7 @@ import time
 import json
 import csv
 import logging
+import boto3
 import traceback
 import re
 import uuid
@@ -14,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 from requests import request
 import requests
-from uploads3file import upload_file,create_temp_dir
+from uploads3file import upload_file,create_temp_dir,send_sqs_message
 from busyparser import parse_busydata
 #import snowflake_connector as sf
 from get_weather import save_weather_data_to_snowflake,save_txt
@@ -30,6 +31,7 @@ from selenium.common.exceptions import TimeoutException, WebDriverException
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 temp_dir = create_temp_dir()
+queue_url = "https://sqs.us-east-2.amazonaws.com/127007033369/scraper_location"
 DAYS = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 try:
@@ -318,6 +320,9 @@ def get_realtime_busy(driver):
     except Exception:
         return None
 
+def gets3csvfile(bucket,key):
+    df = pd.read_csv("s3://{bucket}/{key}".format(bucket=bucket,key=key))
+    return df
 
 def fetch_response_body_safely(driver, request_id, response_url):
     try:
@@ -539,15 +544,18 @@ def scrape_place(driver, url, original_query):
         "busystatus": busystatus,
         "google_place_id": google_place_id
     }
-    filepath = f"{google_place_id}.json"
-    if platform.system() == "Linux":
-        filepath = f"/tmp/{google_place_id}.json"
-    #else:
-    #    filepath = f"./{timebucket}/{google_place_id}.json"
-    
-    with open(temp_dir / filepath, "w", encoding="utf-8") as f:
-        json.dump(json_data, f, ensure_ascii=False, indent=4)
-    upload_file(temp_dir / filepath, "shahowbackup", object_name)
+
+    if busystatus == "":
+        print("wait to resend")
+    else:
+        
+        filepath = f"{google_place_id}.json"
+        if platform.system() == "Linux":
+            filepath = f"/tmp/{google_place_id}.json" 
+        with open(temp_dir / filepath, "w", encoding="utf-8") as f:
+            json.dump(json_data, f, ensure_ascii=False, indent=4)
+        upload_file(temp_dir / filepath, "shahowbackup", object_name)
+        send_sqs_message(queue_url, f"{object_name}")
     """
     insert_into_snowflake({
         "query": original_query,
@@ -613,6 +621,7 @@ def main(query=None):
     
         
 def lambda_handler(event, context):
+    """
     queries = event.get("queries", [])
 
     if isinstance(queries, str):
@@ -625,14 +634,37 @@ def lambda_handler(event, context):
         }
 
     results = main(queries)
+    """
     #check location_busy table
     #busystatus_sql = "SELECT * FROM GMAP_DB.PUBLIC.BUSYSTATUS WHERE CALL_ID = '32175138-dfb7-4ad5-9aef-dff2b3c401fb';"
 
+    try:
+        df=gets3csvfile("shahowbackup","location.csv")
+        locations = df['NAME'].tolist() 
+        print(locations)
+        queue_url="https://sqs.us-east-2.amazonaws.com/127007033369/scraper_location"
+        for l in locations:
+            print(l)
+            message={
+                "location": l,
+                "attempt": 1,
+                "max_attempts": 3
+            }
+            send_sqs_message(queue_url,json.dumps(message))
+        
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "body": f"錯誤: {str(e)}"
+        }
     return {
-        "statusCode": 200,
-        "body": json.dumps(results, ensure_ascii=False)
-    }
+                "statusCode": 200,
+                    "body": json.dumps([], ensure_ascii=False)
+            }
+            
 
+
+  
 def run_parallel(locations, batch_size=5):
 
     all_results = []
@@ -692,15 +724,17 @@ if __name__ == "__main__":
     cursor.close()
     conn.close()
     """
+
+    #root lambda
     seen = set()
     duplicates = []
+    #df=gets3csvfile("shahowbackup","location.csv")
+    #locations = df['NAME'].tolist()
 
-    locations = []
-    with open('location.csv', 'r', encoding='utf-8', newline='') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            locations.append(row['NAME'])
-    print(event)
-    #lambda_handler(event, None)
-    results = run_parallel(locations,batch_size=1)
+
+    #for l in locations:
+    #    print(l)
+
+    lambda_handler(event, None)
+    #results = run_parallel(locations,batch_size=1)
 
