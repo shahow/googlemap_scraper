@@ -728,13 +728,13 @@ if __name__ == "__main__":
     #root lambda
     seen = set()
     duplicates = []
-    #df=gets3csvfile("shahowbackup","location.csv")
-    #locations = df['NAME'].tolist()
+    df=gets3csvfile("shahowbackup","location.csv")
+    locations = df['NAME'].tolist()
 
 
     #for l in locations:
     #    print(l)
 
-    lambda_handler(event, None)
-    #results = run_parallel(locations,batch_size=1)
+    #lambda_handler(event, None)
+    results = run_parallel(locations,batch_size=2)
 
