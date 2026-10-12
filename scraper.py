@@ -7,6 +7,7 @@ import json
 import csv
 import logging
 import boto3
+from zoneinfo import ZoneInfo
 import traceback
 import re
 import uuid
@@ -529,10 +530,10 @@ def scrape_place(driver, url, original_query):
     print("address: " + buttons[0].get_attribute("aria-label") if buttons else "")
 
     #modify to upload to s3
-    timebucket = time.strftime("%Y%m%d%H", time.localtime())
-    object_name = f"scraper/{timebucket}/{google_place_id}_.json"
+    tz = ZoneInfo("Asia/Taipei")
+    timebucket = time.now(tz).strftime("%Y%m%d%H", time.localtime())
+    object_name = f"scraper/{timebucket}/{place_name}_{}.json"
     json_data = {
-        "call_id": call_id,
         "query": original_query,
         "name": place_name,
         "url": url,
@@ -662,17 +663,10 @@ def lambda_handler(event, context):
                     "body": json.dumps([], ensure_ascii=False)
             }
             
-
-
-  
 def run_parallel(locations, batch_size=5):
-
     all_results = []
-
     for i in range(0, len(locations), batch_size):
-
         batch = locations[i:i + batch_size]
-
         logging.info(
             f"Processing locations {i + 1} ~ {i + len(batch)}"
         )
@@ -736,5 +730,5 @@ if __name__ == "__main__":
     #    print(l)
 
     #lambda_handler(event, None)
-    results = run_parallel(locations,batch_size=2)
+    results = run_parallel(locations,batch_size=1)
 
