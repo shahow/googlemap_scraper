@@ -531,7 +531,8 @@ def scrape_place(driver, url, original_query):
 
     #modify to upload to s3
     tz = ZoneInfo("Asia/Taipei")
-    timebucket = time.now(tz).strftime("%Y%m%d%H", time.localtime())
+    #timebucket = time.now(tz).strftime("%Y%m%d%H", time.localtime())
+    timebucket = datetime.now(tz).strftime("%Y%m%d%H")
     retry = 0
     object_name = f"scraper/{timebucket}/{place_name}_{retry}.json"
     json_data = {
