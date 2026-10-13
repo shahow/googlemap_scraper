@@ -24,7 +24,7 @@ def upload_file(file_name, bucket, object_name=None):
             logging.info(f"Uploading file {file_name} to bucket {bucket} with object name {object_name}")
             s3_client.upload_file(file_name, bucket, object_name)
             logging.info(f"File uploaded successfully to {bucket}/{object_name}")
-            send_sqs_message(queue_url, f"{object_name}")
+            #send_sqs_message(queue_url, f"{object_name}")
 
     except ClientError as e:
         logging.error(e)

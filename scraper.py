@@ -261,6 +261,7 @@ def get_place_urls(driver, query):
             
     if not search_input:
         logging.error("Could not find search input.")
+        debug_search_failure()
         return []
 
     search_input.clear()
@@ -349,6 +350,84 @@ def fetch_response_body_safely(driver, request_id, response_url):
             return None
         raise
 
+from pathlib import Path
+from datetime import datetime
+
+def debug_search_failure(driver):
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    folder = Path("/tmp/gmap_debug")
+    folder.mkdir(parents=True, exist_ok=True)
+
+    print("Current URL:", driver.current_url)
+    print("Page title:", driver.title)
+    print(
+        "Ready state:",
+        driver.execute_script("return document.readyState")
+    )
+
+    try:
+        body = driver.find_element("tag name", "body").text
+        print("Body text:", repr(body[:1500]))
+    except Exception as e:
+        print("Body error:", repr(e))
+
+    print("Input elements:", driver.execute_script("""
+        return Array.from(document.querySelectorAll('input'))
+            .map(e => ({
+                name: e.getAttribute('name'),
+                id: e.id,
+                ariaLabel: e.getAttribute('aria-label'),
+                placeholder: e.placeholder,
+                visible: !!(e.offsetWidth || e.offsetHeight)
+            }))
+    """))
+
+    driver.save_screenshot(str(folder / f"{stamp}.png"))
+
+    (folder / f"{stamp}.html").write_text(
+        driver.page_source,
+        encoding="utf-8"
+    )
+
+from pathlib import Path
+from datetime import datetime
+
+def debug_search_failure(driver):
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    folder = Path("/tmp/gmap_debug")
+    folder.mkdir(parents=True, exist_ok=True)
+
+    print("Current URL:", driver.current_url)
+    print("Page title:", driver.title)
+    print(
+        "Ready state:",
+        driver.execute_script("return document.readyState")
+    )
+
+    try:
+        body = driver.find_element("tag name", "body").text
+        print("Body text:", repr(body[:1500]))
+    except Exception as e:
+        print("Body error:", repr(e))
+
+    print("Input elements:", driver.execute_script("""
+        return Array.from(document.querySelectorAll('input'))
+            .map(e => ({
+                name: e.getAttribute('name'),
+                id: e.id,
+                ariaLabel: e.getAttribute('aria-label'),
+                placeholder: e.placeholder,
+                visible: !!(e.offsetWidth || e.offsetHeight)
+            }))
+    """))
+
+    driver.save_screenshot(str(folder / f"{stamp}.png"))
+
+    (folder / f"{stamp}.html").write_text(
+        driver.page_source,
+        encoding="utf-8"
+    )
+
 
 def scrape_place(driver, url, original_query):
     logging.info(f"Scraping place URL: {url}")
@@ -406,7 +485,7 @@ def scrape_place(driver, url, original_query):
                     continue
 
                 logging.info(f"body size={len(body):,}")
-                logging.info(f"body preview={body[:2000]}")
+                logging.info(f"body preview={body}")
                 busystr,busystatus = getbusystr(body)
                 cnt=busystr.count(']],')
                 if cnt == 7:
@@ -623,6 +702,7 @@ def main(query=None):
     for a in all_results:
         print("dumping all_results")
         print(a)
+        time.sleep(30)
     # Read the JSON and write place and popular-times data to MariaDB.
     
         
