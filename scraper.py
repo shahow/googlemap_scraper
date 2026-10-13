@@ -166,9 +166,9 @@ def getbusystr(body):
 
     busystatus = None
     if nowbusylbl != -1:
-        print("nowbusylbl:", body[firststart:nowbusylbl])
+        #print("nowbusylbl:", body[firststart:nowbusylbl])
         busynowstr =  body[end:nowbusylbl]
-        print("nowbusylbl:",  body[end:nowbusylbl])
+        #print("nowbusylbl:",  body[end:nowbusylbl])
         
         busynowlist = ["非繁忙時段","極為繁忙","略為繁忙","有點繁忙","不如平常繁忙","比平常略為繁忙"]
         for a in busynowlist:
@@ -558,7 +558,8 @@ def scrape_place(driver, url, original_query):
         with open(temp_dir / filepath, "w", encoding="utf-8") as f:
             json.dump(json_data, f, ensure_ascii=False, indent=4)
         upload_file(temp_dir / filepath, "shahowbackup", object_name)
-        send_sqs_message(queue_url, f"{object_name}")
+        #send_sqs_message(queue_url, f"{object_name}")
+    return json_data
     """
     insert_into_snowflake({
         "query": original_query,
@@ -619,7 +620,9 @@ def main(query=None):
         if driver:
             driver.quit()
     logging.info(f"Scraping completed. Found data for {len(all_results)} places. Saved to popular_times.json")
-    
+    for a in all_results:
+        print("dumping all_results")
+        print(a)
     # Read the JSON and write place and popular-times data to MariaDB.
     
         
@@ -732,5 +735,5 @@ if __name__ == "__main__":
     #    print(l)
 
     #lambda_handler(event, None)
-    results = run_parallel(locations,batch_size=1)
+    results = run_parallel(locations,batch_size=2)
 
